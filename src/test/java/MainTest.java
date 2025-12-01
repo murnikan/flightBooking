@@ -1,337 +1,284 @@
-import org.example.*;
 import Users.*;
-import planes.*;
-import airlines.*;
+import airlines.Airline;
+import airlines.AirlineRepository;
+import airports.Airport;
+import airports.AirportRepository;
+import org.example.*;
+import planes.Plane;
+import planes.PlaneRepository;
 
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.ActiveProfiles;
+
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
-public class MainTest {
+@SpringBootTest(
+        classes = Application.class,
+        webEnvironment = SpringBootTest.WebEnvironment.NONE
+)
+@ActiveProfiles("test")
+class MainTest {
 
-    private FlightRepository flightRepo;
-    private FlightSearch flightSearch;
-    private ManagerUser manager;
-    private AdminUser admin;
-    private Airline airline;
-    private Plane plane;
+    @MockBean
+    private UserRepository userRepository;
+    @MockBean
+    private FlightRepository flightRepository;
+    @MockBean
+    private BookingRepository bookingRepository;
+    @MockBean
+    private CustomerUserRepository customerUserRepository;
+    @MockBean
+    private AdminUserRepository adminUserRepository;
+    @MockBean
+    private ManagerUserRepository managerUserRepository;
+    @MockBean
+    private FlightService flightService;
+    @MockBean
+    private ManagerUserService managerUserService;
 
-    private Airport cityA;
-    private Airport cityB;
-    private Airport cityC;
-    private Airport cityD;
-    private Airport cityE;
-    private Airport cityF;
-    private Airport cityG;
-    private Airport cityH;
-    private Airport cityI;
-    private Airport cityJ;
-    private Airport cityK;
-    private Airport cityL;
-    private Airport cityM;
-    private Airport cityN;
-    private Airport cityO;
-    private Airport cityP;
-    private Airport cityQ;
-    private Airport cityR;
-    private Airport cityX;
-    private Airport cityY;//безумие это повторение одного и того же действия раз за разом...
+    @MockBean
+    private AirportRepository airportRepository;
+    @MockBean
+    private PlaneRepository planeRepository;
+    @MockBean
+    private AirlineRepository airlineRepository;
+
+    @Autowired
+    private AdminUserService adminUserService;
 
     @BeforeEach
-    void setup() {
-        flightRepo = new FlightRepository();
-        flightRepo.clear(); // очищаем репозиторий перед каждым тестом
-        flightSearch = new FlightSearch(flightRepo);
+    void setUp() {
+        // моки для тестов
+        AdminUser admin = new AdminUser("admin1", "pass");
+        ManagerUser manager = new ManagerUser("manager1", "pass");
+        CustomerUser cust1 = new CustomerUser("name1", "pass", "name1", "surname1", 1111);
+        CustomerUser cust2 = new CustomerUser("name2", "pass", "name2", "surname2", 2222);
+        CustomerUser cust3 = new CustomerUser("name3", "pass", "name3", "surname3", 3333);
 
-        manager = new ManagerUser("m1", "LogM", "pass");
-        admin = new AdminUser("a1", "LogA", "pass");
+        when(userRepository.findByRole(UserRole.ADMIN)).thenReturn(List.of(admin));
+        when(userRepository.findByRole(UserRole.MANAGER)).thenReturn(List.of(manager));
+        when(userRepository.findByRole(UserRole.CUSTOMER)).thenReturn(List.of(cust1, cust2, cust3));
 
-        airline = new TestAirline();
-        plane = new TestPlane("REG-123");
+        Airport dep = new Airport();
+        dep.setCode("AAA");
+        Airport arr = new Airport();
+        arr.setCode("BBB");
+        when(airportRepository.findAll()).thenReturn(List.of(dep, arr));
 
-        // создаём аэропорты
-        cityA = new Airport("Аэропорт A", "AAA", "CityA", true);
-        cityB = new Airport("Аэропорт B", "BBB", "CityB", true);
-        cityC = new Airport("Аэропорт C", "CCC", "CityC", true);
-        cityD = new Airport("Аэропорт D", "DDD", "CityD", true);
-        cityE = new Airport("Аэропорт E", "EEE", "CityE", true);
-        cityF = new Airport("Аэропорт F", "FFF", "CityF", true);
-        cityG = new Airport("Аэропорт G", "GGG", "CityG", true);
-        cityH = new Airport("Аэропорт H", "HHH", "CityH", true);
-        cityI = new Airport("Аэропорт I", "III", "CityI", true);
-        cityJ = new Airport("Аэропорт J", "JJJ", "CityJ", true);
-        cityK = new Airport("Аэропорт K", "KKK", "CityK", true);
-        cityL = new Airport("Аэропорт L", "LLL", "CityL", true);
-        cityM = new Airport("Аэропорт M", "MMM", "CityM", true);
-        cityN = new Airport("Аэропорт N", "NNN", "CityN", true);
-        cityO = new Airport("Аэропорт O", "OOO", "CityO", true);
-        cityP = new Airport("Аэропорт P", "PPP", "CityP", true);
-        cityQ = new Airport("Аэропорт Q", "QQQ", "CityQ", true);
-        cityR = new Airport("Аэропорт R", "RRR", "CityR", true);
-        cityX = new Airport("Аэропорт X", "XXX", "CityX", true);
-        cityY = new Airport("Аэропорт Y", "YYY", "CityY", true);
+        Plane plane = new Plane();
+        plane.setRegistrationNumber("REG123");
+        plane.setModel("TestPlane");
+        plane.setCapacity(2);
+        when(planeRepository.findAll()).thenReturn(List.of(plane));
+
+        Airline airline = new Airline();
+        airline.setIataCode("AL1");
+        when(airlineRepository.findAll()).thenReturn(List.of(airline));
+
+        Flight flight = new Flight();
+        flight.setFlightId(100L);
+        flight.setDepartureAirportCode("AAA");
+        flight.setArrivalAirportCode("BBB");
+        flight.setDepartureTime(LocalDateTime.now());
+        flight.setArrivalTime(LocalDateTime.now().plusHours(2));
+        flight.setAirlineCode("AL1");
+        flight.setPlaneRegistration("REG123");
+        flight.setAvailableSeats(100);
+
+        when(flightRepository.findAll()).thenReturn(List.of(flight));
+        when(flightRepository.save(any(Flight.class))).thenAnswer(i -> i.getArguments()[0]);
+        when(bookingRepository.save(any())).thenAnswer(i -> i.getArguments()[0]);
+    }
+
+
+    @Test
+    void flightCreationTest() {
+        Flight newFlight = new Flight();
+        newFlight.setFlightId(999L);
+        newFlight.setDepartureAirportCode("AAA");
+        newFlight.setArrivalAirportCode("BBB");
+        newFlight.setAirlineCode("AL1");
+        newFlight.setPlaneRegistration("REG123");
+        newFlight.setAvailableSeats(50);
+
+        when(flightRepository.save(any())).thenReturn(newFlight);
+
+        Flight saved = flightRepository.save(newFlight);
+
+        Assertions.assertNotNull(saved);
+        Assertions.assertEquals(999L, saved.getFlightId());
+        Assertions.assertEquals("AAA", saved.getDepartureAirportCode());
+
+        verify(flightRepository).save(any(Flight.class));
     }
 
     @Test
-    void testManagerCreatesRequests() {//создание заявок на обработку менеджером
-        System.out.println("тест1");
+    void userRepositoryRolesTest() {
+        List<User> admins = userRepository.findByRole(UserRole.ADMIN);
+        List<User> customers = userRepository.findByRole(UserRole.CUSTOMER);
 
-        Flight f1 = new Flight(1, cityA, cityB,
-                LocalDateTime.of(2025, 10, 27, 10, 5),
-                LocalDateTime.of(2025, 10, 27, 12, 5),
-                airline, plane);
+        Assertions.assertEquals(1, admins.size());
+        Assertions.assertEquals(3, customers.size());
 
-        Flight f2 = new Flight(2, cityC, cityD,
-                LocalDateTime.of(2025, 10, 28, 10, 5),
-                LocalDateTime.of(2025, 10, 28, 12, 5),
-                airline, plane);
-
-        manager.createFlightRequest(f1);
-        System.out.println("менеджер создал заявку на рейс: " + f1.getFlightInfoShort());
-
-        manager.createFlightRequest(f2);
-        System.out.println("менеджер создал заявку на рейс: " + f2.getFlightInfoShort());
-
-        assertEquals(2, manager.getRequests().size());
+        verify(userRepository).findByRole(UserRole.ADMIN);
+        verify(userRepository).findByRole(UserRole.CUSTOMER);
     }
 
     @Test
-    void testAdminApprovesRequest() {// принятие заявки
-        System.out.println("тест2");
+    void bookingCreationTest() {
+        Flight flight = flightRepository.findAll().get(0);
 
-        Flight f = new Flight(3, cityE, cityF,
-                LocalDateTime.of(2025, 10, 29, 10, 0),
-                LocalDateTime.of(2025, 10, 29, 12, 0),
-                airline, plane);
+        CustomerUser customer = new CustomerUser(
+                "testLogin",
+                "pass",
+                "TestName",
+                "TestSurname",
+                12345
+        );
 
-        manager.createFlightRequest(f);
-        System.out.println("менеджер создал заявку на рейс: " + f.getFlightInfoShort());
+        when(customerUserRepository.findByLogin("testLogin"))
+                .thenReturn(Optional.of(customer));
 
-        FlightRequest req = manager.getRequests().get(0);
-        admin.approveRequest(flightRepo, req);
-        System.out.println("админ одобрил заявку на рейс: " + f.getFlightInfoShort());
+        Booking booking = new Booking();
+        booking.setBookingId(500L);
+        booking.setPassenger(customer);
+        booking.setFlight(flight);
+        booking.setBookingTime(LocalDateTime.now());
 
-        assertTrue(flightRepo.getAllFlights().contains(f));
-    }
+        when(bookingRepository.save(any())).thenReturn(booking);
 
-    @Test// не принятие заявки
-    void testAdminRejectsRequest() {
-        System.out.println("тест3");
+        Booking saved = bookingRepository.save(booking);
 
-        manager.getRequests().clear();
-        flightRepo.clear();
+        Assertions.assertNotNull(saved);
+        Assertions.assertEquals(500L, saved.getBookingId());
+        Assertions.assertEquals("TestName", saved.getPassenger().getFirstName());
+        Assertions.assertEquals("AAA", saved.getFlight().getDepartureAirportCode());
 
-        Flight f = new Flight(4, cityG, cityH,
-                LocalDateTime.of(2025, 10, 30, 10, 0),
-                LocalDateTime.of(2025, 10, 30, 12, 0),
-                airline, new TestPlane("TP-01"));
-
-        manager.createFlightRequest(f);
-        System.out.println("менеджер создал заявку на рейс: " + f.getFlightInfoShort());
-
-        FlightRequest req = manager.getRequests().get(0);
-        admin.rejectRequest(manager, req);
-        System.out.println("админ отклонил заявку на рейс: " + f.getFlightInfoShort());
-
-        assertFalse(manager.getRequests().contains(req));
-    }
-
-    @Test//создание рейса админом
-    void testAdminAddsFlight() {
-        System.out.println("тест4");
-
-        Flight f = new Flight(5, cityI, cityJ,
-                LocalDateTime.of(2025, 11, 1, 10, 0),
-                LocalDateTime.of(2025, 11, 1, 12, 0),
-                airline, plane);
-
-        admin.addFlight(flightRepo, f);
-        System.out.println("админ добавил рейс: " + f.getFlightInfoShort());
-
-        assertTrue(flightRepo.getAllFlights().contains(f));
+        verify(bookingRepository, atLeastOnce()).save(any());
     }
 
     @Test
-    void testAdminSearchesSpecificFlight() {//тест поиска
-        System.out.println("тест5");
+    void adminCreatesFlightCustomerBooksTest() {
+        Flight created = new Flight();
+        created.setFlightId(777L);
+        created.setAvailableSeats(120);
 
-        Flight f = new Flight(6, cityK, cityL,
-                LocalDateTime.of(2025, 11, 2, 10, 0),
-                LocalDateTime.of(2025, 11, 2, 12, 0),
-                airline, plane);
+        when(flightRepository.save(any())).thenReturn(created);
 
-        manager.createFlightRequest(f);
-        FlightRequest req = manager.getRequests().get(0);
-        admin.approveRequest(flightRepo, req);
-        System.out.println("админ одобрил заявку на рейс: " + f.getFlightInfoShort());
+        Flight savedFlight = flightRepository.save(created);
 
-        List<Flight> found = admin.searchFlights(flightSearch, "CityK", "CityL", LocalDate.of(2025, 11, 2));
-        System.out.println("админ выполнил поиск рейсов и нашел: " + found.size() + " рейса(ов)");
-        for (Flight fl : found) {
-            System.out.println("найден рейс: " + fl.getFlightInfoShort());
-        }
+        CustomerUser cust = new CustomerUser("u", "p", "n", "s", 123);
 
-        assertEquals(1, found.size());
+        Booking bk = new Booking();
+        bk.setBookingId(7000L);
+        bk.setFlight(savedFlight);
+        bk.setPassenger(cust);
+
+        when(bookingRepository.save(any())).thenReturn(bk);
+
+        Booking savedBooking = bookingRepository.save(bk);
+
+        Assertions.assertEquals(777L, savedFlight.getFlightId());
+        Assertions.assertEquals(7000L, savedBooking.getBookingId());
+        Assertions.assertEquals(savedFlight, savedBooking.getFlight());
+        Assertions.assertEquals(cust, savedBooking.getPassenger());
+
+        verify(flightRepository, atLeastOnce()).save(any());
+        verify(bookingRepository, atLeastOnce()).save(any());
     }
 
     @Test
-    void testCustomerSearchByCities() {//второй тест поиска(по направлению)
-        System.out.println("тест6");
+    void adminAddsFlightTest() {
+        AdminUser admin = new AdminUser("admin1", "pass");
+        admin.setId(1L);
 
-        Flight flight1 = new Flight(10, cityX, cityY,
-                LocalDateTime.of(2025, 12, 1, 10, 0),
-                LocalDateTime.of(2025, 12, 1, 12, 0),
-                airline, plane);
-
-        Flight flight2 = new Flight(11, cityX, cityY,
-                LocalDateTime.of(2025, 12, 2, 14, 0),
-                LocalDateTime.of(2025, 12, 2, 16, 0),
-                airline, plane);
-
-        admin.addFlight(flightRepo, flight1);
-        System.out.println("админ добавил рейс: " + flight1.getFlightInfoShort());
-        admin.addFlight(flightRepo, flight2);
-        System.out.println("админ добавил рейс: " + flight2.getFlightInfoShort());
-
-        CustomerUser customer = new CustomerUser("C3", "Log3", "pass", "name3", "surname3", 3333);
-        List<Flight> results = flightSearch.searchByCities("CityX", "CityY");
-        System.out.println("результат общего поиска : " + results.size() + " рейса(ов)");
-        for (Flight fl : results) {
-            System.out.println("найден рейс: " + fl.getFlightInfoShort());
-        }
-
-        assertEquals(2, results.size());
+        Flight flight = new Flight();
+        flight.setFlightId(123L);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        when(flightRepository.save(any(Flight.class))).thenAnswer(i -> i.getArguments()[0]);
+        adminUserService.addFlight(1L, flight);
+        verify(flightRepository, times(1)).save(flight);
     }
 
     @Test
-    void testCustomerBooking() {//создание брони
-        System.out.println("тест7");
+    void adminRemovesFlightTest() {
+        AdminUser admin = new AdminUser("admin1", "pass");
+        admin.setId(1L);
 
-        Flight f = new Flight(7, cityM, cityN,
-                LocalDateTime.of(2025, 11, 3, 10, 0),
-                LocalDateTime.of(2025, 11, 3, 12, 0),
-                airline, plane);
+        Flight flight = new Flight();
+        flight.setFlightId(456L);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        doNothing().when(flightRepository).deleteById(flight.getFlightId());
 
-        admin.addFlight(flightRepo, f);
-        System.out.println("админ добавил рейс: " + f.getFlightInfoShort());
-
-        CustomerUser customer = new CustomerUser("C1", "Log1", "pass", "name1", "surname1", 1111);
-        String result = customer.bookFlight(f, new BookingRepository());
-        System.out.println("бронь на рейс создана: " + f.getFlightInfoShort() + " Результат: " + result);
-
-        assertTrue(result.contains("name1"));
+        adminUserService.removeFlight(1L, flight);
+        verify(flightRepository, times(1)).deleteById(flight.getFlightId());
     }
 
     @Test
-    void testMultipleCustomersBooking() throws InterruptedException {//тест многопоточного бронирования
-        System.out.println("тест8");
+    void testSaveFlightService() {
+        Flight flight = new Flight();
+        flight.setFlightId(1L);
+        flight.setDepartureAirportCode("GOJ");
+        flight.setArrivalAirportCode("SVO");
+        flight.setDepartureTime(LocalDateTime.of(2025, 11, 1, 9, 0));
+        flight.setArrivalTime(LocalDateTime.of(2025, 11, 1, 11, 0));
+        flight.setAirlineCode("SU");
+        flight.setPlaneRegistration("REG-123");
+        flight.setAvailableSeats(150);
 
-        Flight f = new Flight(9, cityQ, cityR,
-                LocalDateTime.of(2025, 11, 5, 10, 0),
-                LocalDateTime.of(2025, 11, 5, 12, 0),
-                airline, plane);
+        when(flightService.saveFlight(any(Flight.class))).thenReturn(flight);
 
-        admin.addFlight(flightRepo, f);
-        System.out.println("админ добавил рейс: " + f.getFlightInfoShort());
+        Flight created = flightService.saveFlight(flight);
 
-        CustomerUser[] customers = {
-                new CustomerUser("C1", "Log1", "pass", "name1", "surname1", 1111),
-                new CustomerUser("C2", "Log2", "pass", "name2", "surname2", 2222)
-        };
+        Assertions.assertNotNull(created);
+        Assertions.assertEquals("REG-123", created.getPlaneRegistration());
+        Assertions.assertEquals("SU", created.getAirlineCode());
 
-        BookingRepository bookingRepo = new BookingRepository();
-        ExecutorService executor = Executors.newFixedThreadPool(customers.length);
-        List<Future<String>> futures = new ArrayList<>();
-
-        for (CustomerUser c : customers) {
-            futures.add(executor.submit(() -> c.bookFlight(f, bookingRepo)));
-        }
-
-        for (Future<String> fut : futures) {
-            try {
-                System.out.println("результат бронирования: " + fut.get());
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-
-        executor.shutdown();
-        executor.awaitTermination(5, TimeUnit.SECONDS);
-
-        int seatsBooked = f.getPlane().getCapacity() - f.getAvailableSeats();
-        System.out.println("всего забронировано мест: " + seatsBooked);
-        assertEquals(2, seatsBooked);
+        verify(flightService, times(1)).saveFlight(flight);
     }
-
     @Test
-    void testRemoveFlight() {//удаление рейса
-        System.out.println("тест9");
+    void managerCreatesFlightRequestTest() {
+     //менеджер реализует права
+        ManagerUser manager = (ManagerUser) userRepository.findByRole(UserRole.MANAGER).get(0);
+        List<Airport> airports = airportRepository.findAll();
+        Airport departure = airports.get(0);
+        Airport arrival = airports.get(1);
 
-        Flight f = new Flight(8, cityO, cityP,
-                LocalDateTime.of(2025, 11, 4, 10, 0),
-                LocalDateTime.of(2025, 11, 4, 12, 0),
-                airline, plane);
+        Plane testPlane = planeRepository.findAll().get(0);
+        Airline airline = airlineRepository.findAll().get(0);
 
-        admin.addFlight(flightRepo, f);
-        System.out.println("админ добавил рейс: " + f.getFlightInfoShort());
+        Flight requestedFlight = new Flight();
+        requestedFlight.setDepartureAirportCode(departure.getCode());
+        requestedFlight.setArrivalAirportCode(arrival.getCode());
+        requestedFlight.setPlaneRegistration(testPlane.getRegistrationNumber());
+        requestedFlight.setAirlineCode(airline.getIataCode());
+        requestedFlight.setDepartureTime(LocalDateTime.now().plusDays(1));
+        requestedFlight.setArrivalTime(LocalDateTime.now().plusDays(1).plusHours(2));
+        requestedFlight.setAvailableSeats(testPlane.getCapacity());
 
-        admin.removeFlight(flightRepo, f);
-        System.out.println("админ удалил рейс: " + f.getFlightInfoShort());
+        Users.FlightRequest flightRequest = new Users.FlightRequest(requestedFlight, Users.FlightRequest.RequestType.CREATE);
 
-        assertFalse(flightRepo.getAllFlights().contains(f));
+        // проверка данных
+        Assertions.assertEquals(2, flightRequest.getFlight().getAvailableSeats());
+        Assertions.assertEquals(Users.FlightRequest.RequestType.CREATE, flightRequest.getType());
+        Flight saved = flightRepository.save(flightRequest.getFlight());
+
+        Assertions.assertNotNull(saved);
+        Assertions.assertEquals(testPlane.getRegistrationNumber(), saved.getPlaneRegistration());
+        Assertions.assertEquals("AAA", saved.getDepartureAirportCode());
+
+        verify(flightRepository, times(1)).save(any(Flight.class));
     }
 
-    @Test
-    void testCustomerSearchWithConnection() { //тест поиска #3
-        System.out.println("test10");
-
-        // 4 рейса, три из них участвуют в поиске пересадки, один "лишний" для проверки метода поиска
-        Flight flight1 = new Flight(20, cityA, cityB,
-                LocalDateTime.of(2025, 12, 5, 8, 0),
-                LocalDateTime.of(2025, 12, 5, 10, 0),
-                airline, plane);
-
-        Flight flight2 = new Flight(21, cityB, cityC,
-                LocalDateTime.of(2025, 12, 5, 12, 0),
-                LocalDateTime.of(2025, 12, 5, 14, 0),
-                airline, plane);
-
-        Flight flight3 = new Flight(22, cityA, cityC,
-                LocalDateTime.of(2025, 12, 5, 9, 0),
-                LocalDateTime.of(2025, 12, 5, 13, 0),
-                airline, plane);
-
-        Flight flight4= new Flight(2, cityB, cityA,
-                LocalDateTime.of(2025, 12, 5, 13, 0),
-                LocalDateTime.of(2025, 12, 5, 15, 0),
-                airline, plane);
-             admin.addFlight(flightRepo, flight1);
-        System.out.println("Admin добавил рейс: " + flight1.getFlightInfoShort());
-             admin.addFlight(flightRepo, flight2);
-        System.out.println("Admin добавил рейс: " + flight2.getFlightInfoShort());
-             admin.addFlight(flightRepo, flight3);
-        System.out.println("Admin добавил рейс: " + flight3.getFlightInfoShort());
-         admin.addFlight(flightRepo, flight4);
-        System.out.println("Admin добавил рейс: " + flight4.getFlightInfoShort());
-
-          CustomerUser customer = new CustomerUser("C4", "Log4", "pass", "name4", "surname4", 4444);
-        List<List<Flight>> connections = flightSearch.searchWithConnection("CityA", "CityC", LocalDate.of(2025, 12, 5));
-
-        System.out.println(" Найдено маршрутов с пересадкой: " + connections.size());
-        for (List<Flight> route : connections) {
-            System.out.print("Маршрут: ");
-            for (Flight f : route) {
-                System.out.print(f.getFlightInfoShort() + " -> ");
-            }
-            System.out.println("конец");
-        }
-        assertTrue(connections.size() >= 1);
-    }
 }

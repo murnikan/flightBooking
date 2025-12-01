@@ -1,55 +1,33 @@
 package Users;
 
-import org.example.Flight;
-import org.example.FlightSearch;
+import jakarta.persistence.*;
+import lombok.*;
 
-import java.time.LocalDate;
-import java.util.List;
-
+@Entity
+@Inheritance(strategy = InheritanceType.SINGLE_TABLE)
+@DiscriminatorColumn(name = "role")
+@Table(name = "users")
+@Getter
+@Setter
+@NoArgsConstructor
 public abstract class User {
-    private String id;
+    // атрибуты сущности user  id, login, password role, ключевое поле id
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
     private String login;
+
+    @Column(nullable = false)
     private String password;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, insertable = false, updatable = false)
     private UserRole role;
-
-    public User(String id, String login, String password, UserRole role) {
-        this.id = id;
+    public User(String login, String password, UserRole role) {
         this.login = login;
         this.password = password;
         this.role = role;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    public void setRole(UserRole role) {
-        this.role = role;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public void setLogin(String login) {
-        this.login = login;
-    }
-
-    public String getId() {
-        return id;
-    }
-    public String getLogin() {
-        return login;
-    }
-    public String getPassword() {
-        return password;
-    }
-    public UserRole getRole() {
-
-        return role;
-    }
-
-    public List<Flight> searchFlights(FlightSearch search, String from, String to, LocalDate date) {
-        return search.search(from, to, date);
     }
 }

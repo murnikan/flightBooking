@@ -1,100 +1,191 @@
 package org.example;
 
-import planes.*;
 import Users.*;
-import airlines.*;
+import airlines.AirlineRepository;
+import airports.*;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import lombok.RequiredArgsConstructor;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+import planes.*;
+
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class DemoRunner {
+@Component
+@Profile("!test")
+@RequiredArgsConstructor
+public class DemoRunner implements CommandLineRunner {
 
-    public static void main(String[] args) throws InterruptedException {
+    private final FlightRepository flightRepository;
+    private final BookingRepository bookingRepository;
+    private final CustomerUserRepository customerUserRepository;
+    private final UserRepository userRepository;
 
-        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+    private final AirportRepository airportRepository;
+    private final PlaneRepository planeRepository;
+    private final AirlineRepository airlineRepository;
 
-        // нач. данные необходимые для работы
-        Airport nnGOJ = new Airport("Стригино", "GOJ", "Нижний Новгород", true);
-        Airport moscowSVO = new Airport("Шереметьево", "SVO", "Москва", true);
-        Airport spbLED = new Airport("Пулково", "LED", "Санкт-Петербург", true);
+    @PersistenceContext
+    private final EntityManager em;
 
-        Plane testPlane = new TestPlane("TP-001"); // тестовый самолет с 3 местами
-        Plane superjet = new SukhoiSuperjet("SSJ-100-001");
-        Plane boeing = new Boeing737("B737-001");
+    private final ConcurrentMap<Long, Object> flightLocks = new ConcurrentHashMap<>();
 
-        Airline aeroflot = new Aeroflot();
-        Airline utair = new Utair();
+    @Override
+    public void run(String... args) throws Exception {
+        System.out.println("(начало работы)");
 
-        FlightRepository flightRepo = new FlightRepository();
-        BookingRepository bookingRepo = new BookingRepository();
+        // подгрузка тестового самолета для работы
+        var testPlane = planeRepository.findAll().stream()
+                .filter(p -> "TestPlane".equalsIgnoreCase(p.getModel()))
 
-        ManagerUser manager = new ManagerUser("M1", "manager1", "pass");
-        AdminUser admin = new AdminUser("A1", "admin1", "pass");
+                .findFirst()
+                .orElse(null);
 
-        // менеджер реализует права(все действия менеджера по добавлению/исключению рейса требуют подтверждения админа
-        Flight flightRequestFlight = new Flight(101, nnGOJ, moscowSVO,
-                LocalDateTime.of(2025, 11, 1, 9, 0),
-                LocalDateTime.of(2025, 11, 1, 11, 0),
-                utair, testPlane);
-        manager.createFlightRequest(flightRequestFlight);
-        System.out.println("[Менеджер] создана заявка на рейс: " + flightRequestFlight.getFlightInfo());
+        if (testPlane == null) {
+            System.out.println("[ERROR] Самолет TestPlane не найден в БД");
+            return;
+        }
 
-        // админ реализует права
-        Flight f1 = new Flight(201, moscowSVO, spbLED,
-                LocalDateTime.of(2025, 11, 1, 16, 0),
-                LocalDateTime.of(2025, 11, 1, 17, 30),
-                aeroflot, superjet);
-        Flight f2 = new Flight(202, moscowSVO, spbLED,
-                LocalDateTime.of(2025, 11, 2, 10, 0),
-                LocalDateTime.of(2025, 11, 2, 12, 0),
-                aeroflot, boeing);
+        System.out.println("[INFO] Найден самолет TestPlane, capacity = " + testPlane.getCapacity());
 
-        admin.addFlight(flightRepo, f1);
-        System.out.println("[Админ] добавлен рейс: " + f1.getFlightInfo());
-        admin.addFlight(flightRepo, f2);
-        System.out.println("[Админ]добавлен рейс: " + f2.getFlightInfo());
-        FlightRequest request = manager.getRequests().get(0);
-        admin.approveRequest(flightRepo, request);
-        System.out.println("[Админ] подтверждена заявка менеджера на рейс: " + flightRequestFlight.getFlightInfo());
+        // роли
 
-        System.out.println("\nВсе рейсы:\n");
-        flightRepo.printAllFlights();
-        CustomerUser c1 = new CustomerUser("C1", "name1", "pass", "name1", "surname1", 1111);
-        CustomerUser c2 = new CustomerUser("C2", "name2", "pass", "name2", "surname2", 2222);
-        CustomerUser c3 = new CustomerUser("C3", "name3", "pass", "name3", "surname3", 3333);
-        CustomerUser c4 = new CustomerUser("C4", "name4", "pass", "name4", "surname4", 4444);
-        CustomerUser[] customers = {c1, c2, c3, c4};
-        Flight[] flightsToBook = {flightRequestFlight, flightRequestFlight, flightRequestFlight, f1};
+        List<ManagerUser> managers = userRepository.findByRole(UserRole.MANAGER).stream()
+                .filter(u -> u instanceof ManagerUser)
+                .map(u -> (ManagerUser) u)
+                .toList();
+        ManagerUser manager = managers.isEmpty() ? null : managers.get(0);
 
-        // 3 потока пытаюстся создать бронь
-        ExecutorService executor = Executors.newFixedThreadPool(3);
-        List<Future<String>> futures = new ArrayList<>();
+        List<AdminUser> admins = userRepository.findByRole(UserRole.ADMIN).stream()
+                .filter(u -> u instanceof AdminUser)
+                .map(u -> (AdminUser) u)
+                .toList();
+        AdminUser admin = admins.isEmpty() ? null : admins.get(0);
+        List<CustomerUser> customers = customerUserRepository.findAll();
+        if (customers.size() < 3) {
+            System.out.println("[ERROR] Нужно минимум 3 CustomerUser в БД для теста");// 3 тк в самолете 2 места всего
+            return;
+        }
 
-        for (int i = 0; i < customers.length; i++) {
-            CustomerUser customer = customers[i];
-            Flight flight = flightsToBook[i];
+        //менеджер реализует свой функционал
+        Users.FlightRequest fr = null;
+        if (manager != null) {
+            var airports = airportRepository.findAll();
+            var departure = airports.isEmpty() ? null : airports.get(0);
+            var arrival = (airports.size() > 1) ? airports.get(1) : departure;
 
-            futures.add(executor.submit(() -> {
-                int delay = ThreadLocalRandom.current().nextInt(0, 500);
+            Flight requestedFlight = new Flight();
+            requestedFlight.setDepartureAirportCode(departure != null ? departure.getCode() : "XXX");
+            requestedFlight.setArrivalAirportCode(arrival != null ? arrival.getCode() : "YYY");
+            requestedFlight.setPlaneRegistration(testPlane.getRegistrationNumber());
+            requestedFlight.setAirlineCode(airlineRepository.findAll().stream().findFirst().map(a -> a.getIataCode()).orElse("TS"));
+            requestedFlight.setDepartureTime(LocalDateTime.now().plusDays(1));
+            requestedFlight.setArrivalTime(LocalDateTime.now().plusDays(1).plusHours(2));
+            requestedFlight.setAvailableSeats(testPlane.getCapacity());
+
+            fr = new Users.FlightRequest(requestedFlight, Users.FlightRequest.RequestType.CREATE);
+
+            System.out.println("[Manager] создал FlightRequest для TestPlane, seats = " + requestedFlight.getAvailableSeats());
+        } else {
+            System.out.println("[ERROR] Менеджер отсутствует — нельзя создать запрос");
+            return;
+        }
+
+        //админ работает с реквестом
+        Flight approvedFlight;
+        if (admin != null && fr != null) {
+            approvedFlight = flightRepository.save(fr.getFlight());
+            System.out.println("[Admin] подтвердил запрос, создан рейс ID=" + approvedFlight.getFlightId()
+                    + ", seats=" + approvedFlight.getAvailableSeats());
+        } else {
+            System.out.println("[ERROR] Админ или запрос отсутствует");
+            return;
+        }
+
+        //многопоточка
+        int threads = 3;
+        ExecutorService ex = Executors.newFixedThreadPool(threads);
+        List<Future<Void>> futures = new ArrayList<>();
+
+        for (int i = 0; i < 3; i++) {
+            final CustomerUser customer = customers.get(i);
+            futures.add(ex.submit(() -> {
+                int delay = ThreadLocalRandom.current().nextInt(50, 400);
                 Thread.sleep(delay);
-                String result = customer.bookFlight(flight, bookingRepo);
-                return result + " (задержка: " + delay + " ms)";//служебное поле, показывает задержку потока
+
+                Long flightId = approvedFlight.getFlightId();
+                Object lock = flightLocks.computeIfAbsent(flightId, k -> new Object());
+
+                synchronized (lock) {
+                    try {
+                        Optional<Flight> opt = flightRepository.findById(flightId);
+                        if (opt.isEmpty()) {
+                            System.out.println("[ошибка бронирования] Данные пользователя=" +
+                                    customer.getLogin() + " | рейс не найден");
+                            return null;
+                        }
+                        Flight flightNow = opt.get();
+
+                        int seatsLeft = flightNow.getAvailableSeats();
+                        if (seatsLeft <= 0) {
+                            System.out.println("[Бронь отклонена, нет мест] Данные пользователя=" + customer.getLogin()
+                                    + " | flightId=" + flightId);
+                            return null;
+                        }
+
+                        //в случае успешного бронирования количество свобожных мест уменьшается на 1
+                        flightNow.setAvailableSeats(seatsLeft - 1);
+                        flightRepository.save(flightNow);
+                        Booking b = new Booking();
+                        b.setPassenger(customer);
+                        b.setFlight(flightNow);
+                        b.setBookingTime(LocalDateTime.now());
+                        Booking saved = bookingRepository.save(b);
+
+                        System.out.println(String.format("[Бронь создана] user=%s | bookingId=%d | flightId=%d | delay=%dms | seatsLeft=%d",
+                                customer.getLogin(),
+                                saved.getBookingId(),
+                                flightId,
+                                delay,
+                                flightNow.getAvailableSeats()));
+
+                    } catch (Exception exx) {
+                        System.out.println("[ошибка бронирования] Данные пользователя=" + customer.getLogin() + " |ошибка:=" + exx.getMessage());
+                    }
+                }
+
+                return null;
             }));
         }
 
-        System.out.println("\nНачало работы потоков бронирования\n");
-        for (Future<String> f : futures) {
-            try {
-                System.out.println(f.get());
-            } catch (ExecutionException e) {
-                e.printStackTrace();
-            }
-        }
 
-        executor.shutdown();
-        executor.awaitTermination(5, TimeUnit.SECONDS);
+        ex.shutdown();
+        ex.awaitTermination(10, TimeUnit.SECONDS);
 
-        bookingRepo.printAllBookingsByFlights(flightRepo.getAllFlights());
+        // итоговая сводка по рейсам и броням в бд
+
+        System.out.println("\nКоличество оставшихся мест для бронирования на каждый рейс:");
+        flightRepository.findAll().forEach(f ->
+                System.out.println(" - flight id=" + f.getFlightId() + ", число мест:" + f.getAvailableSeats())
+        );
+
+        System.out.println("\nСозданные брони");
+        bookingRepository.findAll().forEach(b -> {
+            CustomerUser passenger = b.getPassenger();
+            Flight flight = b.getFlight();
+            System.out.println(String.format(" - bookingId=%d | passenger=%s %s | flightId=%d | departure=%s | arrival=%s",
+                    b.getBookingId(),
+                    passenger.getFirstName(),
+                    passenger.getLastName(),
+                    flight.getFlightId(),
+                    flight.getDepartureAirportCode(),
+                    flight.getArrivalAirportCode()
+            ));
+        });
+
     }
 }
