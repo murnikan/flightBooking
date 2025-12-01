@@ -1,74 +1,80 @@
 package org.example;
 
-import java.util.List;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import airlines.Airline;
+import planes.Plane;
+
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 public class Flight {
-    private Integer flightid;
-    private Integer pass_capacity;
-    private Airport departAirport;
-    private Airport destAirport;
+    private int flightId;
+    private Airport departureAirport;
+    private Airport arrivalAirport;
+    private LocalDateTime departureTime;
+    private LocalDateTime arrivalTime;
+    private Duration duration;
+    private Airline airline;
+    private Plane plane;
+    private int availableSeats;
 
-    private final Lock bookingLock = new ReentrantLock();
-
-    public Integer getFlightid() {
-        return flightid;
+    public Flight(int flightId, Airport departureAirport, Airport arrivalAirport,
+                  LocalDateTime departureTime, LocalDateTime arrivalTime,
+                  Airline airline, Plane plane) {
+        this.flightId = flightId;
+        this.departureAirport = departureAirport;
+        this.arrivalAirport = arrivalAirport;
+        this.departureTime = departureTime;
+        this.arrivalTime = arrivalTime;
+        this.duration = Duration.between(departureTime, arrivalTime);
+        this.airline = airline;
+        this.plane = plane;
+        this.availableSeats = plane.getCapacity();
     }
 
-    public void setFlightid(Integer flightid) {
-        this.flightid = flightid;
+    public int getFlightId() { return flightId; }
+    public Airport getDepartureAirport() { return departureAirport; }
+    public Airport getArrivalAirport() { return arrivalAirport; }
+    public String getDepartureCity() { return departureAirport.getCity(); }
+    public String getArrivalCity() { return arrivalAirport.getCity(); }
+    public String getDepartureCode() { return departureAirport.getCode(); }
+    public String getArrivalCode() { return arrivalAirport.getCode(); }
+    public LocalDateTime getDepartureTime() { return departureTime; }
+    public LocalDateTime getArrivalTime() { return arrivalTime; }
+    public Duration getDuration() { return duration; }
+    public Airline getAirline() { return airline; }
+    public Plane getPlane() { return plane; }
+
+    public synchronized int getAvailableSeats() {
+        return availableSeats;
     }
 
-    public Airport getDepartAirport() {
-        return departAirport;
-    }
-
-    public void setDepartAirport(Airport departAirport) {
-        this.departAirport = departAirport;
-    }
-
-    public Airport getDestAirport() {
-        return destAirport;
-    }
-
-    public void setDestAirport(Airport destAirport) {
-        this.destAirport = destAirport;
-    }
-
-    public Integer getPass_capacity() {
-        return pass_capacity;
-    }
-
-    public void setPass_capacity(Integer pass_capacity) {
-        this.pass_capacity = pass_capacity;
+    public synchronized boolean bookSeat() {
+        if (availableSeats <= 0) {
+            return false;
+        }
+        availableSeats--;
+        return true;
     }
 
     public String getFlightInfo() {
-        return "Номер рейса: " + flightid +
-                " | Отправление из: " + (departAirport != null ? departAirport.getAirportCode() : "нет данных") +
-                " | Прибывает в: " + (destAirport != null ? destAirport.getAirportCode() : "нет данных") +
-                " | Пассажировместимость: " + pass_capacity;
-    }
-    public String bookSeatSafe(Person person, List<Booking> bookings) {
-        bookingLock.lock();
-        try {
-            long bookedSeats = bookings.stream()
-                    .filter(b -> b.getFlight().getFlightid().equals(this.flightid))
-                    .count();
-
-            if (bookedSeats >= pass_capacity) {
-                return "Ошибка! нет мест для " + person.getName();
-            }
-
-            String bookingId = "BKGN" + (bookings.size() + 1);
-            Booking booking = new Booking(bookingId, person, this);
-            bookings.add(booking);
-
-            return "Бронь создана: " + bookingId + " для " + person.getName();
-        } finally {
-            bookingLock.unlock();
-        }
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+        return String.format(
+                "Рейс: %d | %s (%s) -> %s (%s) | Отправление: %s | Прибытие: %s | Длительность: %d ч %d мин | Авиакомпания: %s | Самолёт: %s | Свободных мест: %d",
+                flightId,
+                departureAirport.getCity(), departureAirport.getCode(),
+                arrivalAirport.getCity(), arrivalAirport.getCode(),
+                departureTime.format(dtf), arrivalTime.format(dtf),
+                duration.toHours(), duration.toMinutesPart(),
+                airline.getName(), plane.getFullInfo(), getAvailableSeats()
+        );
     }
 
+    public String getFlightInfoShort() {
+        return String.format("%d: %s (%s) -> %s (%s) | Отправление: %s",
+                flightId,
+                departureAirport.getCity(), departureAirport.getCode(),
+                arrivalAirport.getCity(), arrivalAirport.getCode(),
+                departureTime.format(DateTimeFormatter.ofPattern("dd.MM HH:mm")));
+    }
 }
