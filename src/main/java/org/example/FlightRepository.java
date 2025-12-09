@@ -1,59 +1,29 @@
 package org.example;
 
-import java.time.LocalDate;
-import java.util.ArrayList;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.stream.Collectors;
 
-public class FlightRepository {
+@Repository
+public interface FlightRepository extends JpaRepository<Flight, Long> {
 
-    private final List<Flight> flights = new ArrayList<>();
-
-    public void addFlight(Flight flight) {
-        if (flight != null) {
-            flights.add(flight);
-        }
-    }
-
-    public List<Flight> getAllFlights() {
-        return new ArrayList<>(flights);
-    }
-
-    public Flight getById(int id) {
-        return flights.stream()
-                .filter(f -> f.getFlightId() == id)
-                .findFirst()
-                .orElse(null);
-    }
-    //методы поиска рейсов
-    public List<Flight> findFlights(String from, String to, LocalDate date) {
-        return flights.stream()
-                .filter(f -> f.getDepartureCity().equalsIgnoreCase(from))
-                .filter(f -> f.getArrivalCity().equalsIgnoreCase(to))
-                .filter(f -> f.getDepartureTime().toLocalDate().equals(date))
-                .collect(Collectors.toList());
-    }
-    public boolean hasFlights(String from, String to, LocalDate date) {
-        return !findFlights(from, to, date).isEmpty();
-    }
+    @Query("SELECT f FROM Flight f " +
+            "WHERE LOWER(f.departureAirportCode) = LOWER(:from) " +
+            "AND LOWER(f.arrivalAirportCode) = LOWER(:to) " +
+            "AND f.departureTime BETWEEN :start AND :end")
+    List<Flight> findFlightsByCityAndDate(@Param("from") String from,
+                                          @Param("to") String to,
+                                          @Param("start") LocalDateTime start,
+                                          @Param("end") LocalDateTime end);
 
 
-
-
-    public boolean removeFlightById(int id) {
-        return flights.removeIf(f -> f.getFlightId() == id);
-    }
-    public void printAllFlights() {
-        if (flights.isEmpty()) {
-            System.out.println("нет рейсов");
-            return;
-        }
-        for (Flight f : flights) {
-            System.out.println(f.getFlightInfo());
-        }
-    }
-    public void clear() {
-        flights.clear();
-    }
-
+    @Query("SELECT f FROM Flight f " +
+            "WHERE LOWER(f.departureAirportCode) = LOWER(:from) " +
+            "AND LOWER(f.arrivalAirportCode) = LOWER(:to)")
+    List<Flight> findFlightsByCity(@Param("from") String from,
+                                   @Param("to") String to);
 }

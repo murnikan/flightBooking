@@ -1,24 +1,38 @@
 package planes;
 
+import jakarta.persistence.*;
+import lombok.*;
 
-public abstract class Plane {
-    protected String model;
-    protected String type;
-    protected int capacity;
-    protected int maxWeightKg;
-    protected int maxDistanceKm;
-    protected int productionYear;
-    protected String registrationNumber;
-    public Plane(String model, String type, int capacity, int maxWeightKg,
-                 int maxDistanceKm, int productionYear, String registrationNumber) {
-        this.model = model;
-        this.type = type;
-        this.capacity = capacity;
-        this.maxWeightKg = maxWeightKg;
-        this.maxDistanceKm = maxDistanceKm;
-        this.productionYear = productionYear;
-        this.registrationNumber = registrationNumber;
-    }
+@Entity
+@Table(name = "planes")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@ToString
+public class Plane {
+// сущность самолет атрибуты: рег. номер, модель тип, вместимость, макс вес, макс дистанция
+    @Id
+    @Column(name = "registration_number", nullable = false, unique = true)
+    private String registrationNumber; // ключ
+
+    @Column(nullable = false)
+    private String model;
+
+    @Column(nullable = false)
+    private String type;
+
+    @Column(nullable = false)
+    private int capacity;
+
+    @Column(name = "max_weight_kg", nullable = false)
+    private int maxWeightKg;
+
+    @Column(name = "max_distance_km", nullable = false)
+    private int maxDistanceKm;
+
+    @Column(name = "production_year", nullable = false)
+    private int productionYear;
 
     public boolean checkWeight(int baggageKg) {
         return baggageKg <= maxWeightKg;
@@ -31,69 +45,7 @@ public abstract class Plane {
     public String getFullInfo() {
         return String.format(
                 "тип: %s | модель: %s | вместимость: %d | макс. вес: %d кг | макс. дистанция: %d км | год: %d | рег. номер: %s",
-                getClass().getSimpleName(),
-                model,
-                capacity,
-                maxWeightKg,
-                maxDistanceKm,
-                productionYear,
-                registrationNumber
+                type, model, capacity, maxWeightKg, maxDistanceKm, productionYear, registrationNumber
         );
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public int getCapacity() {
-        return capacity;
-    }
-
-    public void setCapacity(int capacity) {
-        this.capacity = capacity;
-    }
-
-    public int getMaxWeightKg() {
-        return maxWeightKg;
-    }
-
-    public void setMaxWeightKg(int maxWeightKg) {
-        this.maxWeightKg = maxWeightKg;
-    }
-
-    public int getMaxDistanceKm() {
-        return maxDistanceKm;
-    }
-
-    public void setMaxDistanceKm(int maxDistanceKm) {
-        this.maxDistanceKm = maxDistanceKm;
-    }
-
-    public int getProductionYear() {
-        return productionYear;
-    }
-
-    public void setProductionYear(int productionYear) {
-        this.productionYear = productionYear;
-    }
-
-    public String getRegistrationNumber() {
-        return registrationNumber;
-    }
-
-    public void setRegistrationNumber(String registrationNumber) {
-        this.registrationNumber = registrationNumber;
     }
 }

@@ -29,13 +29,13 @@ public class FlightRequest {
 
         FlightRequest that = (FlightRequest) o;
 
-        return flight.getFlightId() == that.flight.getFlightId()
+        return flight.getFlightId().equals(that.flight.getFlightId())
                 && type == that.type;
     }
 
     @Override
     public int hashCode() {
-        int result = flight.getFlightId();
+        int result = flight.getFlightId() != null ? flight.getFlightId().hashCode() : 0;
         result = 31 * result + type.hashCode();
         return result;
     }
@@ -43,7 +43,7 @@ public class FlightRequest {
     @Override
     public String toString() {
         return "FlightRequest{" +
-                "flightId=" + flight.getFlightId() +
+                "flightId=" + (flight != null ? flight.getFlightId() : "null") +
                 ", type=" + type +
                 '}';
     }

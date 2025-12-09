@@ -1,80 +1,71 @@
 package org.example;
 
-import airlines.Airline;
-import planes.Plane;
-
+import jakarta.persistence.*;
+import lombok.*;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
+@Entity
+@Table(name = "flights")
+@Getter
+@Setter
+@NoArgsConstructor
+@ToString
 public class Flight {
-    private int flightId;
-    private Airport departureAirport;
-    private Airport arrivalAirport;
+//сущность Flight атрибуты: код аэропорта отправления/прибытия, время отправления/прибытия, код авиалинии, рег номер самолета и число свободных мест
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long flightId;
+
+    @Column(name = "departure_airport_code", nullable = false)
+    private String departureAirportCode;
+
+    @Column(name = "arrival_airport_code", nullable = false)
+    private String arrivalAirportCode;
+
+    @Column(name = "departure_time", nullable = false)
     private LocalDateTime departureTime;
+
+    @Column(name = "arrival_time", nullable = false)
     private LocalDateTime arrivalTime;
-    private Duration duration;
-    private Airline airline;
-    private Plane plane;
+
+    @Column(name = "airline_code", nullable = false)
+    private String airlineCode;
+
+    @Column(name = "plane_registration", nullable = false)
+    private String planeRegistration;
+
+    @Column(name = "available_seats", nullable = false)
     private int availableSeats;
 
-    public Flight(int flightId, Airport departureAirport, Airport arrivalAirport,
-                  LocalDateTime departureTime, LocalDateTime arrivalTime,
-                  Airline airline, Plane plane) {
-        this.flightId = flightId;
-        this.departureAirport = departureAirport;
-        this.arrivalAirport = arrivalAirport;
-        this.departureTime = departureTime;
-        this.arrivalTime = arrivalTime;
-        this.duration = Duration.between(departureTime, arrivalTime);
-        this.airline = airline;
-        this.plane = plane;
-        this.availableSeats = plane.getCapacity();
-    }
+    @Transient
+    private Duration duration;
 
-    public int getFlightId() { return flightId; }
-    public Airport getDepartureAirport() { return departureAirport; }
-    public Airport getArrivalAirport() { return arrivalAirport; }
-    public String getDepartureCity() { return departureAirport.getCity(); }
-    public String getArrivalCity() { return arrivalAirport.getCity(); }
-    public String getDepartureCode() { return departureAirport.getCode(); }
-    public String getArrivalCode() { return arrivalAirport.getCode(); }
-    public LocalDateTime getDepartureTime() { return departureTime; }
-    public LocalDateTime getArrivalTime() { return arrivalTime; }
-    public Duration getDuration() { return duration; }
-    public Airline getAirline() { return airline; }
-    public Plane getPlane() { return plane; }
-
-    public synchronized int getAvailableSeats() {
-        return availableSeats;
+    @PostLoad
+    @PostPersist
+    @PostUpdate
+    private void calculateDuration() {
+        if (departureTime != null && arrivalTime != null) {
+            duration = Duration.between(departureTime, arrivalTime);
+        }
     }
 
     public synchronized boolean bookSeat() {
-        if (availableSeats <= 0) {
-            return false;
-        }
+        if (availableSeats <= 0) return false;
         availableSeats--;
         return true;
     }
 
-    public String getFlightInfo() {
-        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
-        return String.format(
-                "Рейс: %d | %s (%s) -> %s (%s) | Отправление: %s | Прибытие: %s | Длительность: %d ч %d мин | Авиакомпания: %s | Самолёт: %s | Свободных мест: %d",
-                flightId,
-                departureAirport.getCity(), departureAirport.getCode(),
-                arrivalAirport.getCity(), arrivalAirport.getCode(),
-                departureTime.format(dtf), arrivalTime.format(dtf),
-                duration.toHours(), duration.toMinutesPart(),
-                airline.getName(), plane.getFullInfo(), getAvailableSeats()
-        );
+    public synchronized void cancelSeat() {
+        availableSeats++;
     }
 
-    public String getFlightInfoShort() {
-        return String.format("%d: %s (%s) -> %s (%s) | Отправление: %s",
+    public String getFlightInfo() {
+        return String.format("Flight %d: %s -> %s, departure=%s, arrival=%s",
                 flightId,
-                departureAirport.getCity(), departureAirport.getCode(),
-                arrivalAirport.getCity(), arrivalAirport.getCode(),
-                departureTime.format(DateTimeFormatter.ofPattern("dd.MM HH:mm")));
+                departureAirportCode,
+                arrivalAirportCode,
+                departureTime != null ? departureTime.toString() : "N/A",
+                arrivalTime != null ? arrivalTime.toString() : "N/A");
     }
 }

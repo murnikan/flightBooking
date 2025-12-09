@@ -1,37 +1,66 @@
 package org.example;
 
 import Users.CustomerUser;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.persistence.*;
+import lombok.*;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+@Entity
+@Table(name = "bookings")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Booking {
-    private String bookingId;
-    private CustomerUser passenger;
-    private Flight flight;
-    private LocalDateTime bookingTime;
-    private boolean isPaid;
 
-    public Booking(String bookingId, CustomerUser passenger, Flight flight) {
-        this.bookingId = bookingId;
-        this.passenger = passenger;
-        this.flight = flight;
-        this.bookingTime = LocalDateTime.now();
-        this.isPaid = false;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "booking_id")
+    private Long bookingId;
+
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+
+    @JoinColumn(name = "passenger_id")
+    @JsonIgnoreProperties({"bookings", "hibernateLazyInitializer", "handler"})
+    private CustomerUser passenger;
+
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+
+    @JoinColumn(name = "flight_id")
+    @JsonIgnoreProperties({"bookings", "hibernateLazyInitializer", "handler"})
+    private Flight flight;
+
+    @Column(name = "booking_time", nullable = false)
+    private LocalDateTime bookingTime;
+
+    @Column(name = "is_paid", nullable = false)
+    private boolean isPaid = false;
+
+    @PrePersist
+    private void prePersist() {
+        if (bookingTime == null) {
+            bookingTime = LocalDateTime.now();
+        }
     }
 
-    public String getBookingId() { return bookingId; }
-    public CustomerUser getPassenger() { return passenger; }
-    public Flight getFlight() { return flight; }
-    public LocalDateTime getBookingTime() { return bookingTime; }
-    public boolean isPaid() { return isPaid; }
-    public void pay() { this.isPaid = true; }
+    public void pay() {
+        this.isPaid = true;
+    }
 
-    // методы для выдачи чеков (второй используется для общего вывода в демораннинге
     public String getBookingReceipt() {
         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+        String airlineCode = flight.getAirlineCode() != null ? flight.getAirlineCode() : "N/A";
+        String planeReg = flight.getPlaneRegistration() != null ? flight.getPlaneRegistration() : "N/A";
+
+        Duration duration = flight.getDuration() != null ? flight.getDuration() : Duration.ZERO;
+
         return String.format(
                 "====== Бронь подтверждена ======\n" +
-                        "ID брони: %s\n" +
+                        "ID брони: %d\n" +
                         "Пассажир: %s %s\n" +
                         "Паспорт: %d\n" +
                         "Дата брони: %s\n" +
@@ -47,23 +76,25 @@ public class Booking {
                 passenger.getLastName(),
                 passenger.getPassportNumber(),
                 bookingTime.format(dtf),
-                flight.getDepartureCity(),
-                flight.getArrivalCity(),
+                flight.getDepartureAirportCode(),
+                flight.getArrivalAirportCode(),
                 flight.getDepartureTime().format(dtf),
                 flight.getArrivalTime().format(dtf),
-                flight.getDuration().toHours(),
-                flight.getDuration().toMinutesPart(),
-                flight.getAirline().getName(),
-                flight.getPlane().getFullInfo(),
+                duration.toHours(),
+                duration.toMinutesPart(),
+                airlineCode,
+                planeReg,
                 isPaid ? "Оплачено" : "Не оплачено"
         );
     }
+
     public String getBookingReceiptShort() {
-        return String.format("Пассажир: %s %s | Паспорт: %d | Статус: %s",
+        return String.format(
+                "Пассажир: %s %s | Паспорт: %d | Статус: %s",
                 passenger.getFirstName(),
                 passenger.getLastName(),
                 passenger.getPassportNumber(),
-                isPaid ? "Оплачено" : "Не оплачено");
+                isPaid ? "Оплачено" : "Не оплачено"
+        );
     }
-
 }

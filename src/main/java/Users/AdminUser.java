@@ -1,43 +1,45 @@
 package Users;
 
+import jakarta.persistence.*;
+import lombok.*;
 import org.example.Flight;
 import org.example.FlightRepository;
-import org.example.FlightSearch;
 
-import java.time.LocalDate;
-import java.util.List;
-
+@Entity
+@DiscriminatorValue("ADMIN")
+@Getter
+@Setter
+@NoArgsConstructor
 public class AdminUser extends User {
-    // админ имеет права на создание/удаление рейсов, а так же на рассмотрение заявок менеджера
-    public AdminUser(String id, String login, String password) {
-        super(id, login, password, UserRole.ADMIN);
+//функционал тот же (создать/удалить рейс, подтвердить/Отклонить запрос рейса)
+    public AdminUser(String login, String password) {
+        super(login, password, UserRole.ADMIN);
     }
 
-    // полный функционал админа
     public void addFlight(FlightRepository repo, Flight flight) {
-        repo.addFlight(flight);
+        if (flight != null) repo.save(flight);
     }
 
     public void removeFlight(FlightRepository repo, Flight flight) {
-        repo.removeFlightById(flight.getFlightId());
-    }
-
-    //работа с результатами деятельности менеджеров
-    public void approveRequest(FlightRepository repo, FlightRequest request) {
-        if (request.getType() == FlightRequest.RequestType.CREATE) {
-            repo.addFlight(request.getFlight());
-        } else if (request.getType() == FlightRequest.RequestType.DELETE) {
-            repo.removeFlightById(request.getFlight().getFlightId());
+        if (flight != null && flight.getFlightId() != null) {
+            repo.deleteById(flight.getFlightId());
         }
     }
 
-    public void rejectRequest(ManagerUser manager, FlightRequest request) {
+    public void approveRequest(ManagerUser manager, FlightRequest request, FlightRepository repo) {
+        if (manager == null || request == null) return;
+        Flight flight = request.getFlight();
+        if (request.getType() == FlightRequest.RequestType.CREATE) {
+            addFlight(repo, flight);
+        } else if (request.getType() == FlightRequest.RequestType.DELETE) {
+            removeFlight(repo, flight);
+        }
         manager.removeRequest(request);
     }
 
-
-
-    public List<Flight> searchFlights(FlightSearch search, String from, String to, LocalDate date) {
-        return super.searchFlights(search, from, to, date);
+    public void rejectRequest(ManagerUser manager, FlightRequest request) {
+        if (manager != null && request != null) {
+            manager.removeRequest(request);
+        }
     }
 }
