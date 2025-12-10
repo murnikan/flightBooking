@@ -3,6 +3,7 @@ package org.example;
 import Users.*;
 import airlines.AirlineRepository;
 import airports.*;
+import exceptions.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
@@ -38,42 +39,32 @@ public class DemoRunner implements CommandLineRunner {
     public void run(String... args) throws Exception {
         System.out.println("(начало работы)");
 
-        // подгрузка тестового самолета для работы
+        // подгрузка тестового самолета
         var testPlane = planeRepository.findAll().stream()
                 .filter(p -> "TestPlane".equalsIgnoreCase(p.getModel()))
-
                 .findFirst()
-                .orElse(null);
-
-        if (testPlane == null) {
-            System.out.println("[ERROR] Самолет TestPlane не найден в БД");
-            return;
-        }
-
-        System.out.println("[INFO] Найден самолет TestPlane, capacity = " + testPlane.getCapacity());
-
-        // роли
+                .orElseThrow(() -> new PlaneNotFoundException("Самолет TestPlane не найден"));
 
         List<ManagerUser> managers = userRepository.findByRole(UserRole.MANAGER).stream()
                 .filter(u -> u instanceof ManagerUser)
                 .map(u -> (ManagerUser) u)
                 .toList();
         ManagerUser manager = managers.isEmpty() ? null : managers.get(0);
+        if (manager == null) throw new ManagerNotFoundException("В БД нет пользователей с ролью MANAGER");
 
         List<AdminUser> admins = userRepository.findByRole(UserRole.ADMIN).stream()
                 .filter(u -> u instanceof AdminUser)
                 .map(u -> (AdminUser) u)
                 .toList();
         AdminUser admin = admins.isEmpty() ? null : admins.get(0);
-        List<CustomerUser> customers = customerUserRepository.findAll();
-        if (customers.size() < 3) {
-            System.out.println("[ERROR] Нужно минимум 3 CustomerUser в БД для теста");// 3 тк в самолете 2 места всего
-            return;
-        }
+        if (admin == null) throw new AdminNotFoundException("В БД нет пользователей с ролью ADMIN");
 
-        //менеджер реализует свой функционал
-        Users.FlightRequest fr = null;
-        if (manager != null) {
+        List<CustomerUser> customers = customerUserRepository.findAll();
+        if (customers.size() < 3) throw new NotEnoughCustomersException("Нужно минимум 3 CustomerUser для теста");
+
+        // менеджер создает FlightRequest
+        Users.FlightRequest fr;
+        try {
             var airports = airportRepository.findAll();
             var departure = airports.isEmpty() ? null : airports.get(0);
             var arrival = (airports.size() > 1) ? airports.get(1) : departure;
@@ -82,110 +73,91 @@ public class DemoRunner implements CommandLineRunner {
             requestedFlight.setDepartureAirportCode(departure != null ? departure.getCode() : "XXX");
             requestedFlight.setArrivalAirportCode(arrival != null ? arrival.getCode() : "YYY");
             requestedFlight.setPlaneRegistration(testPlane.getRegistrationNumber());
-            requestedFlight.setAirlineCode(airlineRepository.findAll().stream().findFirst().map(a -> a.getIataCode()).orElse("TS"));
+            requestedFlight.setAirlineCode(airlineRepository.findAll().stream().findFirst()
+                    .map(a -> a.getIataCode()).orElse("TS"));
             requestedFlight.setDepartureTime(LocalDateTime.now().plusDays(1));
             requestedFlight.setArrivalTime(LocalDateTime.now().plusDays(1).plusHours(2));
             requestedFlight.setAvailableSeats(testPlane.getCapacity());
 
             fr = new Users.FlightRequest(requestedFlight, Users.FlightRequest.RequestType.CREATE);
-
             System.out.println("[Manager] создал FlightRequest для TestPlane, seats = " + requestedFlight.getAvailableSeats());
-        } else {
-            System.out.println("[ERROR] Менеджер отсутствует — нельзя создать запрос");
-            return;
+
+        } catch (Exception e) {
+            throw new FlightRequestException("Ошибка при создании FlightRequest менеджером: " + e.getMessage());
         }
 
-        //админ работает с реквестом
+        // админ подтверждает FlightRequest
         Flight approvedFlight;
-        if (admin != null && fr != null) {
-            approvedFlight = flightRepository.save(fr.getFlight());
-            System.out.println("[Admin] подтвердил запрос, создан рейс ID=" + approvedFlight.getFlightId()
-                    + ", seats=" + approvedFlight.getAvailableSeats());
-        } else {
-            System.out.println("[ERROR] Админ или запрос отсутствует");
-            return;
-        }
+        admin.approveRequest(manager, fr, flightRepository);
+        approvedFlight = fr.getFlight();
+        System.out.println("[Admin] подтвердил запрос менеджера, создан рейс ID="
+                + approvedFlight.getFlightId() + ", seats=" + approvedFlight.getAvailableSeats());
 
-        //многопоточка
+        // многопоточное бронирование
         int threads = 3;
         ExecutorService ex = Executors.newFixedThreadPool(threads);
-        List<Future<Void>> futures = new ArrayList<>();
 
         for (int i = 0; i < 3; i++) {
             final CustomerUser customer = customers.get(i);
-            futures.add(ex.submit(() -> {
+            ex.submit(() -> {
                 int delay = ThreadLocalRandom.current().nextInt(50, 400);
-                Thread.sleep(delay);
+                try {
+                    Thread.sleep(delay);
 
-                Long flightId = approvedFlight.getFlightId();
-                Object lock = flightLocks.computeIfAbsent(flightId, k -> new Object());
+                    Long flightId = approvedFlight.getFlightId();
+                    Object lock = flightLocks.computeIfAbsent(flightId, k -> new Object());
 
-                synchronized (lock) {
-                    try {
-                        Optional<Flight> opt = flightRepository.findById(flightId);
-                        if (opt.isEmpty()) {
-                            System.out.println("[ошибка бронирования] Данные пользователя=" +
-                                    customer.getLogin() + " | рейс не найден");
-                            return null;
-                        }
-                        Flight flightNow = opt.get();
+                    synchronized (lock) {
+                        Flight flightNow = flightRepository.findById(flightId)
+                                .orElseThrow(() -> new FlightNotFoundException(
+                                        "Рейс с ID=" + flightId + " не найден для пользователя " + customer.getLogin()));
 
-                        int seatsLeft = flightNow.getAvailableSeats();
-                        if (seatsLeft <= 0) {
-                            System.out.println("[Бронь отклонена, нет мест] Данные пользователя=" + customer.getLogin()
-                                    + " | flightId=" + flightId);
-                            return null;
+                        if (flightNow.getAvailableSeats() <= 0) {
+                            throw new NoSeatsAvailableException(
+                                    "Нет мест на рейс ID=" + flightId + " для пользователя " + customer.getLogin());
                         }
 
-                        //в случае успешного бронирования количество свобожных мест уменьшается на 1
-                        flightNow.setAvailableSeats(seatsLeft - 1);
+                        flightNow.setAvailableSeats(flightNow.getAvailableSeats() - 1);
                         flightRepository.save(flightNow);
+
                         Booking b = new Booking();
                         b.setPassenger(customer);
                         b.setFlight(flightNow);
                         b.setBookingTime(LocalDateTime.now());
-                        Booking saved = bookingRepository.save(b);
+                        bookingRepository.save(b);
 
-                        System.out.println(String.format("[Бронь создана] user=%s | bookingId=%d | flightId=%d | delay=%dms | seatsLeft=%d",
-                                customer.getLogin(),
-                                saved.getBookingId(),
-                                flightId,
-                                delay,
-                                flightNow.getAvailableSeats()));
-
-                    } catch (Exception exx) {
-                        System.out.println("[ошибка бронирования] Данные пользователя=" + customer.getLogin() + " |ошибка:=" + exx.getMessage());
+                        System.out.println("[Бронь создана] user=" + customer.getLogin()
+                                + " | flightId=" + flightNow.getFlightId()
+                                + " | seatsLeft=" + flightNow.getAvailableSeats());
                     }
+
+                } catch (FlightNotFoundException e) {
+                    System.out.println("[Ошибка] " + e.getMessage() + " | проверьте рейс");
+                } catch (NoSeatsAvailableException e) {
+                    System.out.println("[Ошибка] " + e.getMessage() + " | Нет мест на рейс, попробуйте позже или выберите другой рейс");
+                } catch (Exception e) {
+                    System.out.println("[Ошибка] Неизвестная ошибка для пользователя=" + customer.getLogin()
+                             + e.getMessage());
                 }
-
-                return null;
-            }));
+            });
         }
-
 
         ex.shutdown();
         ex.awaitTermination(10, TimeUnit.SECONDS);
 
-        // итоговая сводка по рейсам и броням в бд
-
-        System.out.println("\nКоличество оставшихся мест для бронирования на каждый рейс:");
+        // итоговая сводка по рейсам и броням
         flightRepository.findAll().forEach(f ->
-                System.out.println(" - flight id=" + f.getFlightId() + ", число мест:" + f.getAvailableSeats())
+                System.out.println(" - flight id=" + f.getFlightId() + ", число мест для бронирования:" + f.getAvailableSeats())
         );
 
-        System.out.println("\nСозданные брони");
         bookingRepository.findAll().forEach(b -> {
             CustomerUser passenger = b.getPassenger();
             Flight flight = b.getFlight();
-            System.out.println(String.format(" - bookingId=%d | passenger=%s %s | flightId=%d | departure=%s | arrival=%s",
-                    b.getBookingId(),
-                    passenger.getFirstName(),
-                    passenger.getLastName(),
-                    flight.getFlightId(),
-                    flight.getDepartureAirportCode(),
-                    flight.getArrivalAirportCode()
-            ));
+            System.out.println(" - bookingId=" + b.getBookingId() + " | passenger="
+                    + passenger.getFirstName() + " " + passenger.getLastName()
+                    + " | flightId=" + flight.getFlightId()
+                    + " | departure=" + flight.getDepartureAirportCode()
+                    + " | arrival=" + flight.getArrivalAirportCode());
         });
-
     }
 }
