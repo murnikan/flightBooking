@@ -10,4 +10,5 @@ import java.util.List;
 public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findByPassenger(CustomerUser passenger);
     List<Booking> findByFlight(Flight flight);
+    boolean existsByPassengerAndFlight(CustomerUser passenger, Flight flight);
 }

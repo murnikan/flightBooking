@@ -1,5 +1,6 @@
 package org.example;
 
+import exceptions.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,63 +16,94 @@ public class BookingController {
     @Autowired
     private BookingService bookingService;
 
-    // cоздание брони
+
     @PostMapping
     public ResponseEntity<?> createBooking(@RequestBody Booking booking) {
-        Long passengerId = booking.getPassenger().getId();
-        Long flightId = booking.getFlight().getFlightId();
-//куча ошибок и того что может вылететь(нет мест, не те данные, другое) + начальный материал для лр3
+
+        Long passengerId = booking.getPassenger() != null ? booking.getPassenger().getId() : null;
+        Long flightId = booking.getFlight() != null ? booking.getFlight().getFlightId() : null;
+
         try {
             Booking created = bookingService.createBooking(passengerId, flightId);
-            System.out.println("[бронь успешна] passengerId=" + passengerId + " flightId=" + flightId);
             return ResponseEntity.ok(created);
 
-        } catch (IllegalStateException e) {
-            System.out.println("[бронь отклонена ] passengerId=" + passengerId + " flightId=" + flightId + " | " + e.getMessage());
-            return ResponseEntity.status(409)
-                    .body(Map.of("error", e.getMessage()));
+        } catch (PassengerNotFoundException e) {
+            System.out.println("[Ошибка] " + e.getMessage());
+            return ResponseEntity.status(404).body("Пассажир не найден");
 
-        } catch (IllegalArgumentException e) {
+        } catch (FlightNotFoundException e) {
+            System.out.println("[Ошибка] " + e.getMessage());
+            return ResponseEntity.status(404).body("Рейс не найден");
 
-            System.out.println("[ошибка бронирования] passengerId=" + passengerId + " flightId=" + flightId + " | " + e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", e.getMessage()));
+        } catch (NoSeatsAvailableException e) {
+            System.out.println("[Ошибка] " + e.getMessage());
+            return ResponseEntity.status(409).body("Нет свободных мест");
 
-        } catch (Exception e) {
+        } catch (BookingConflictException e) {
+            System.out.println("[Ошибка] " + e.getMessage());
+            return ResponseEntity.status(409).body("Конфликт бронирования, возможно данный пользователь уже имеет бронь на этот рейс");
 
-            System.out.println("[BOOK EXCEPTION] passengerId=" + passengerId + " flightId=" + flightId + " | " + e.getMessage());
-            return ResponseEntity.status(500)
-                    .body(Map.of("error", "Internal server error", "details", e.getMessage()));
+        } catch (InvalidBookingDataException e) {
+            System.out.println("[Ошибка] " + e.getMessage());
+            return ResponseEntity.badRequest().body("Неверные данные");
+
+        } catch (BookingServiceException e) {
+            System.out.println("[Ошибка] " + e.getMessage());
+            return ResponseEntity.status(500).body("Ошибка сервера бронирования");
+
         }
     }
 
-    // получение броней
+
+
+
     @GetMapping
     public List<Booking> getAllBookings() {
         return bookingService.getAllBookings();
     }
+
     @GetMapping("/{id}")
-    public ResponseEntity<Booking> getBookingById(@PathVariable Long id) {
+    public ResponseEntity<?> getBookingById(@PathVariable Long id) {
         Optional<Booking> booking = bookingService.getBookingById(id);
-        return booking
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+
+        if (booking.isPresent()) {
+            return ResponseEntity.ok(booking.get());
+        } else {
+            return ResponseEntity.status(404)
+                    .body(Map.of("error", "Бронь не найдена"));
+        }
     }
 
 
     @GetMapping("/search/passenger")
-    public List<Booking> getBookingsByPassenger(@RequestParam Long passengerId) {
-        return bookingService.getBookingsByPassenger(passengerId);
+    public ResponseEntity<?> getBookingsByPassenger(@RequestParam Long passengerId) {
+        try {
+            return ResponseEntity.ok(bookingService.getBookingsByPassenger(passengerId));
+        } catch (PassengerNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
     }
+
     @GetMapping("/search/flight")
-    public List<Booking> getBookingsByFlight(@RequestParam Long flightId) {
-        return bookingService.getBookingsByFlight(flightId);
+    public ResponseEntity<?> getBookingsByFlight(@RequestParam Long flightId) {
+        try {
+            return ResponseEntity.ok(bookingService.getBookingsByFlight(flightId));
+        } catch (FlightNotFoundException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
     }
-    // удаление брони
+
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteBooking(@PathVariable Long id) {
-        bookingService.deleteBooking(id);
-        System.out.println("[BOOKING DELETED] bookingId=" + id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<?> deleteBooking(@PathVariable Long id) {
+        try {
+            bookingService.deleteBooking(id);
+            return ResponseEntity.noContent().build();
+
+        } catch (BookingNotFoundException e) {
+            System.out.println("[Ошибка] " + e.getMessage());
+            return ResponseEntity.ok(Map.of("error", "Бронь не найдена"));
+        }
+
     }
+
 }
