@@ -14,13 +14,13 @@ public class UserController {
     @Autowired
     private UserService userService;
 
-    // создание обновление удаление
-    @PostMapping
+    // создание обновление удаление, убрано тк вся логика работы с пользователем опред роли сделана в дочерних классах
+   /*  @PostMapping
     public ResponseEntity<User> createUser(@RequestBody User user) {
         User created = userService.saveUser(user);
         return ResponseEntity.created(URI.create("/api/users/" + created.getId())).body(created);
     }
-    @PutMapping("/{id}")
+   @PutMapping("/{id}")
     public ResponseEntity<User> updateUser(@PathVariable Long id, @RequestBody User user) {
         return userService.getUserById(id)
                 .map(existing -> {
@@ -29,7 +29,7 @@ public class UserController {
                     return ResponseEntity.ok(updated);
                 })
                 .orElseGet(() -> ResponseEntity.notFound().build());
-    }
+    }*/
     @GetMapping
     public ResponseEntity<List<User>> getAllUsers() {
         return ResponseEntity.ok(userService.getAllUsers());

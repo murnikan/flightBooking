@@ -9,26 +9,42 @@ public class ManagerUserService {
 
     @Autowired
     private UserRepository userRepository;
-    public ManagerUser getManagerById(Long id) {
-        return (ManagerUser) userRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Manager not found"));
+
+    public ManagerUser save(ManagerUser manager) {
+        return (ManagerUser) userRepository.save(manager);
     }
 
-    // заяки (создание, получение, уаление)
+    public List<ManagerUser> getAll() {
+        return userRepository.findAll()
+                .stream()
+                .filter(u -> u instanceof ManagerUser)
+                .map(u -> (ManagerUser) u)
+                .toList();
+    }
+
+    public java.util.Optional<ManagerUser> getById(Long id) {
+        return userRepository.findById(id)
+                .filter(u -> u instanceof ManagerUser)
+                .map(u -> (ManagerUser) u);
+    }
+
+    public void deleteById(Long id) {
+        userRepository.deleteById(id);
+    }
+
     public void createFlightRequest(Long managerId, org.example.Flight flight) {
-        ManagerUser manager = getManagerById(managerId);
-        manager.createFlightRequest(flight);
+        getById(managerId).ifPresent(m -> m.createFlightRequest(flight));
     }
+
     public void deleteFlightRequest(Long managerId, org.example.Flight flight) {
-        ManagerUser manager = getManagerById(managerId);
-        manager.deleteFlightRequest(flight);
+        getById(managerId).ifPresent(m -> m.deleteFlightRequest(flight));
     }
+
     public List<FlightRequest> getRequests(Long managerId) {
-        ManagerUser manager = getManagerById(managerId);
-        return manager.getRequests();
+        return getById(managerId).map(ManagerUser::getRequests).orElse(List.of());
     }
+
     public boolean removeRequest(Long managerId, FlightRequest request) {
-        ManagerUser manager = getManagerById(managerId);
-        return manager.removeRequest(request);
+        return getById(managerId).map(m -> m.removeRequest(request)).orElse(false);
     }
 }

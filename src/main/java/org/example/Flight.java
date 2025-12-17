@@ -1,10 +1,13 @@
 package org.example;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.time.Duration;
 import java.time.LocalDateTime;
 
+@JsonIgnoreProperties({"flightId", "duration", "flightInfo"})
 @Entity
 @Table(name = "flights")
 @Getter
@@ -12,7 +15,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @ToString
 public class Flight {
-//сущность Flight атрибуты: код аэропорта отправления/прибытия, время отправления/прибытия, код авиалинии, рег номер самолета и число свободных мест
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long flightId;

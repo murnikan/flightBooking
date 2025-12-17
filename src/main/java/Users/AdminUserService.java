@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class AdminUserService {
@@ -16,29 +17,38 @@ public class AdminUserService {
     @Autowired
     private FlightRepository flightRepository;
 
-    public AdminUser getAdminById(Long id) {
-        return (AdminUser) userRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Admin not found"));
+    public AdminUser save(AdminUser admin) {
+        return (AdminUser) userRepository.save(admin);
     }
 
-    // обработка заявки менеджера
-    public void approveRequest(Long adminId, ManagerUser manager, FlightRequest request) {
-        AdminUser admin = getAdminById(adminId);
-        admin.approveRequest(manager, request, flightRepository);
-    }
-    public void rejectRequest(Long adminId, ManagerUser manager, FlightRequest request) {
-        AdminUser admin = getAdminById(adminId);
-        admin.rejectRequest(manager, request);
+    public Optional<AdminUser> getById(Long id) {
+        return userRepository.findById(id).map(user -> (AdminUser) user);
     }
 
-    // работа с рейсами
+    public List<AdminUser> getAll() {
+        return userRepository.findAll()
+                .stream()
+                .filter(user -> user instanceof AdminUser)
+                .map(user -> (AdminUser) user)
+                .toList();
+    }
+
+    public void deleteById(Long id) {
+        userRepository.deleteById(id);
+    }
+
+
     public void addFlight(Long adminId, Flight flight) {
-        AdminUser admin = getAdminById(adminId);
-        admin.addFlight(flightRepository, flight);
+        AdminUser admin = (AdminUser) userRepository.findById(adminId)
+                .orElseThrow(() -> new RuntimeException("admin not found"));
+
+        flightRepository.save(flight);
     }
 
     public void removeFlight(Long adminId, Flight flight) {
-        AdminUser admin = getAdminById(adminId);
-        admin.removeFlight(flightRepository, flight);
+        AdminUser admin = (AdminUser) userRepository.findById(adminId)
+                .orElseThrow(() -> new RuntimeException("admin not found"));
+
+        flightRepository.deleteById(flight.getFlightId());
     }
 }
