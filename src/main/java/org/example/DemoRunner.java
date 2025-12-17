@@ -7,6 +7,8 @@ import exceptions.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -20,6 +22,8 @@ import java.util.concurrent.*;
 @Profile("!test")
 @RequiredArgsConstructor
 public class DemoRunner implements CommandLineRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(DemoRunner.class);
 
     private final FlightRepository flightRepository;
     private final BookingRepository bookingRepository;
@@ -37,30 +41,42 @@ public class DemoRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        System.out.println("(начало работы)");
+        log.info("(начало работы)");
 
         // подгрузка тестового самолета
         var testPlane = planeRepository.findAll().stream()
                 .filter(p -> "TestPlane".equalsIgnoreCase(p.getModel()))
                 .findFirst()
-                .orElseThrow(() -> new PlaneNotFoundException("Самолет TestPlane не найден"));
+                .orElseThrow(() -> new PlaneNotFoundException("самолет TestPlane не найден"));
+
+        log.info("найден тестовый самолет: model={}, registration={}",
+                testPlane.getModel(), testPlane.getRegistrationNumber());
 
         List<ManagerUser> managers = userRepository.findByRole(UserRole.MANAGER).stream()
                 .filter(u -> u instanceof ManagerUser)
                 .map(u -> (ManagerUser) u)
                 .toList();
         ManagerUser manager = managers.isEmpty() ? null : managers.get(0);
-        if (manager == null) throw new ManagerNotFoundException("В БД нет пользователей с ролью MANAGER");
+        if (manager == null) {
+            log.error("в БД нет пользователей с ролью MANAGER");
+            throw new ManagerNotFoundException("в БД нет пользователей с ролью MANAGER");
+        }
 
         List<AdminUser> admins = userRepository.findByRole(UserRole.ADMIN).stream()
                 .filter(u -> u instanceof AdminUser)
                 .map(u -> (AdminUser) u)
                 .toList();
         AdminUser admin = admins.isEmpty() ? null : admins.get(0);
-        if (admin == null) throw new AdminNotFoundException("В БД нет пользователей с ролью ADMIN");
+        if (admin == null) {
+            log.error("в БД нет пользователей с ролью ADMIN");
+            throw new AdminNotFoundException("в БД нет пользователей с ролью ADMIN");
+        }
 
         List<CustomerUser> customers = customerUserRepository.findAll();
-        if (customers.size() < 3) throw new NotEnoughCustomersException("Нужно минимум 3 CustomerUser для теста");
+        if (customers.size() < 3) {
+            log.error("недостаточно CustomerUser для теста: {}", customers.size());
+            throw new NotEnoughCustomersException("нужно минимум 3 CustomerUser для теста");
+        }
 
         // менеджер создает FlightRequest
         Users.FlightRequest fr;
@@ -80,18 +96,21 @@ public class DemoRunner implements CommandLineRunner {
             requestedFlight.setAvailableSeats(testPlane.getCapacity());
 
             fr = new Users.FlightRequest(requestedFlight, Users.FlightRequest.RequestType.CREATE);
-            System.out.println("[Manager] создал FlightRequest для TestPlane, seats = " + requestedFlight.getAvailableSeats());
+
+            log.info("[Manager] создал FlightRequest для TestPlane, seats={}",
+                    requestedFlight.getAvailableSeats());
 
         } catch (Exception e) {
-            throw new FlightRequestException("Ошибка при создании FlightRequest менеджером: " + e.getMessage());
+            log.error("ошибка при создании FlightRequest менеджером", e);
+            throw new FlightRequestException("ошибка при создании FlightRequest менеджером: " + e.getMessage());
         }
 
         // админ подтверждает FlightRequest
-        Flight approvedFlight;
         admin.approveRequest(manager, fr, flightRepository);
-        approvedFlight = fr.getFlight();
-        System.out.println("[Admin] подтвердил запрос менеджера, создан рейс ID="
-                + approvedFlight.getFlightId() + ", seats=" + approvedFlight.getAvailableSeats());
+        Flight approvedFlight = fr.getFlight();
+
+        log.info("[Admin] подтвердил запрос менеджера, создан рейс ID={}, seats={}",
+                approvedFlight.getFlightId(), approvedFlight.getAvailableSeats());
 
         // многопоточное бронирование
         int threads = 3;
@@ -126,18 +145,20 @@ public class DemoRunner implements CommandLineRunner {
                         b.setBookingTime(LocalDateTime.now());
                         bookingRepository.save(b);
 
-                        System.out.println("[Бронь создана] user=" + customer.getLogin()
-                                + " | flightId=" + flightNow.getFlightId()
-                                + " | seatsLeft=" + flightNow.getAvailableSeats());
+                        log.info("[Бронь создана] user={} | flightId={} | seatsLeft={}",
+                                customer.getLogin(),
+                                flightNow.getFlightId(),
+                                flightNow.getAvailableSeats());
                     }
 
                 } catch (FlightNotFoundException e) {
-                    System.out.println("[Ошибка] " + e.getMessage() + " | проверьте рейс");
+                    log.warn("[Ошибка] {} | проверьте рейс", e.getMessage());
                 } catch (NoSeatsAvailableException e) {
-                    System.out.println("[Ошибка] " + e.getMessage() + " | Нет мест на рейс, попробуйте позже или выберите другой рейс");
+                    log.warn("[Ошибка] {} | нет мест на рейс, попробуйте позже или выберите другой рейс",
+                            e.getMessage());
                 } catch (Exception e) {
-                    System.out.println("[Ошибка] Неизвестная ошибка для пользователя=" + customer.getLogin()
-                             + e.getMessage());
+                    log.error("[Ошибка] неизвестная ошибка для пользователя={}",
+                            customer.getLogin(), e);
                 }
             });
         }
@@ -147,17 +168,20 @@ public class DemoRunner implements CommandLineRunner {
 
         // итоговая сводка по рейсам и броням
         flightRepository.findAll().forEach(f ->
-                System.out.println(" - flight id=" + f.getFlightId() + ", число мест для бронирования:" + f.getAvailableSeats())
+                log.info(" - flight id={}, число мест для бронирования:{}",
+                        f.getFlightId(), f.getAvailableSeats())
         );
 
         bookingRepository.findAll().forEach(b -> {
             CustomerUser passenger = b.getPassenger();
             Flight flight = b.getFlight();
-            System.out.println(" - bookingId=" + b.getBookingId() + " | passenger="
-                    + passenger.getFirstName() + " " + passenger.getLastName()
-                    + " | flightId=" + flight.getFlightId()
-                    + " | departure=" + flight.getDepartureAirportCode()
-                    + " | arrival=" + flight.getArrivalAirportCode());
+            log.info(" - bookingId={} | passenger={} {} | flightId={} | departure={} | arrival={}",
+                    b.getBookingId(),
+                    passenger.getFirstName(),
+                    passenger.getLastName(),
+                    flight.getFlightId(),
+                    flight.getDepartureAirportCode(),
+                    flight.getArrivalAirportCode());
         });
     }
 }

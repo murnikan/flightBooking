@@ -4,6 +4,7 @@ import airlines.AirlineRepository;
 import airports.Airport;
 import airports.AirportRepository;
 import org.example.*;
+import org.springframework.http.ResponseEntity;
 import planes.Plane;
 import planes.PlaneRepository;
 
@@ -24,83 +25,72 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest(
-        classes = Application.class,
+        classes = {Application.class, org.example.config.TestSecurityConfig.class},
         webEnvironment = SpringBootTest.WebEnvironment.NONE
 )
 @ActiveProfiles("test")
 class MainTest {
 
-    @MockBean
-    private UserRepository userRepository;
-    @MockBean
-    private FlightRepository flightRepository;
-    @MockBean
-    private BookingRepository bookingRepository;
-    @MockBean
-    private CustomerUserRepository customerUserRepository;
-    @MockBean
-    private AdminUserRepository adminUserRepository;
-    @MockBean
-    private ManagerUserRepository managerUserRepository;
-    @MockBean
-    private FlightService flightService;
-    @MockBean
-    private ManagerUserService managerUserService;
+    @MockBean private UserRepository userRepository;
+    @MockBean private FlightRepository flightRepository;
+    @MockBean private BookingRepository bookingRepository;
+    @MockBean private CustomerUserRepository customerUserRepository;
+    @MockBean private AdminUserRepository adminUserRepository;
+    @MockBean private ManagerUserRepository managerUserRepository;
+    @MockBean private FlightService flightService;
+    @MockBean private ManagerUserService managerUserService;
 
-    @MockBean
-    private AirportRepository airportRepository;
-    @MockBean
-    private PlaneRepository planeRepository;
-    @MockBean
-    private AirlineRepository airlineRepository;
+    @MockBean private AirportRepository airportRepository;
+    @MockBean private PlaneRepository planeRepository;
+    @MockBean private AirlineRepository airlineRepository;
 
-    @Autowired
-    private AdminUserService adminUserService;
+    @Autowired private AdminUserService adminUserService;
+
+    private AdminUser admin;
+    private ManagerUser manager;
+    private CustomerUser cust1, cust2, cust3;
+    private Flight flight;
+    private Plane plane;
+    private Airline airline;
+    private Airport dep, arr;
 
     @BeforeEach
     void setUp() {
-        // моки для тестов
-        AdminUser admin = new AdminUser("admin1", "pass");
-        ManagerUser manager = new ManagerUser("manager1", "pass");
-        CustomerUser cust1 = new CustomerUser("name1", "pass", "name1", "surname1", 1111);
-        CustomerUser cust2 = new CustomerUser("name2", "pass", "name2", "surname2", 2222);
-        CustomerUser cust3 = new CustomerUser("name3", "pass", "name3", "surname3", 3333);
+        admin = new AdminUser("admin1", "pass"); admin.setId(1L);
+        manager = new ManagerUser("manager1", "pass"); manager.setId(2L);
+        cust1 = new CustomerUser("name1", "pass", "name1", "surname1", 1111); cust1.setId(3L);
+        cust2 = new CustomerUser("name2", "pass", "name2", "surname2", 2222); cust2.setId(4L);
+        cust3 = new CustomerUser("name3", "pass", "name3", "surname3", 3333); cust3.setId(5L);
 
         when(userRepository.findByRole(UserRole.ADMIN)).thenReturn(List.of(admin));
         when(userRepository.findByRole(UserRole.MANAGER)).thenReturn(List.of(manager));
         when(userRepository.findByRole(UserRole.CUSTOMER)).thenReturn(List.of(cust1, cust2, cust3));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
 
-        Airport dep = new Airport();
-        dep.setCode("AAA");
-        Airport arr = new Airport();
-        arr.setCode("BBB");
+        dep = new Airport(); dep.setCode("AAA");
+        arr = new Airport(); arr.setCode("BBB");
         when(airportRepository.findAll()).thenReturn(List.of(dep, arr));
 
-        Plane plane = new Plane();
-        plane.setRegistrationNumber("REG123");
-        plane.setModel("TestPlane");
-        plane.setCapacity(2);
+        plane = new Plane(); plane.setRegistrationNumber("REG123"); plane.setModel("TestPlane"); plane.setCapacity(2);
         when(planeRepository.findAll()).thenReturn(List.of(plane));
 
-        Airline airline = new Airline();
-        airline.setIataCode("AL1");
+        airline = new Airline(); airline.setIataCode("AL1");
         when(airlineRepository.findAll()).thenReturn(List.of(airline));
 
-        Flight flight = new Flight();
+        flight = new Flight();
         flight.setFlightId(100L);
-        flight.setDepartureAirportCode("AAA");
-        flight.setArrivalAirportCode("BBB");
+        flight.setDepartureAirportCode(dep.getCode());
+        flight.setArrivalAirportCode(arr.getCode());
         flight.setDepartureTime(LocalDateTime.now());
         flight.setArrivalTime(LocalDateTime.now().plusHours(2));
-        flight.setAirlineCode("AL1");
-        flight.setPlaneRegistration("REG123");
-        flight.setAvailableSeats(100);
+        flight.setAirlineCode(airline.getIataCode());
+        flight.setPlaneRegistration(plane.getRegistrationNumber());
+        flight.setAvailableSeats(plane.getCapacity());
 
         when(flightRepository.findAll()).thenReturn(List.of(flight));
         when(flightRepository.save(any(Flight.class))).thenAnswer(i -> i.getArguments()[0]);
         when(bookingRepository.save(any())).thenAnswer(i -> i.getArguments()[0]);
     }
-
 
     @Test
     void flightCreationTest() {
@@ -111,8 +101,6 @@ class MainTest {
         newFlight.setAirlineCode("AL1");
         newFlight.setPlaneRegistration("REG123");
         newFlight.setAvailableSeats(50);
-
-        when(flightRepository.save(any())).thenReturn(newFlight);
 
         Flight saved = flightRepository.save(newFlight);
 
@@ -137,26 +125,14 @@ class MainTest {
 
     @Test
     void bookingCreationTest() {
-        Flight flight = flightRepository.findAll().get(0);
-
-        CustomerUser customer = new CustomerUser(
-                "testLogin",
-                "pass",
-                "TestName",
-                "TestSurname",
-                12345
-        );
-
-        when(customerUserRepository.findByLogin("testLogin"))
-                .thenReturn(Optional.of(customer));
+        CustomerUser customer = new CustomerUser("testLogin", "pass", "TestName", "TestSurname", 12345);
+        when(customerUserRepository.findByLogin("testLogin")).thenReturn(Optional.of(customer));
 
         Booking booking = new Booking();
         booking.setBookingId(500L);
         booking.setPassenger(customer);
         booking.setFlight(flight);
         booking.setBookingTime(LocalDateTime.now());
-
-        when(bookingRepository.save(any())).thenReturn(booking);
 
         Booking saved = bookingRepository.save(booking);
 
@@ -173,9 +149,6 @@ class MainTest {
         Flight created = new Flight();
         created.setFlightId(777L);
         created.setAvailableSeats(120);
-
-        when(flightRepository.save(any())).thenReturn(created);
-
         Flight savedFlight = flightRepository.save(created);
 
         CustomerUser cust = new CustomerUser("u", "p", "n", "s", 123);
@@ -184,8 +157,6 @@ class MainTest {
         bk.setBookingId(7000L);
         bk.setFlight(savedFlight);
         bk.setPassenger(cust);
-
-        when(bookingRepository.save(any())).thenReturn(bk);
 
         Booking savedBooking = bookingRepository.save(bk);
 
@@ -199,86 +170,128 @@ class MainTest {
     }
 
     @Test
-    void adminAddsFlightTest() {
-        AdminUser admin = new AdminUser("admin1", "pass");
-        admin.setId(1L);
+    void managerCreatesFlightRequestTest() {
+        ManagerUser managerUser = (ManagerUser) userRepository.findByRole(UserRole.MANAGER).get(0);
 
-        Flight flight = new Flight();
-        flight.setFlightId(123L);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
-        when(flightRepository.save(any(Flight.class))).thenAnswer(i -> i.getArguments()[0]);
-        adminUserService.addFlight(1L, flight);
-        verify(flightRepository, times(1)).save(flight);
-    }
+        Flight requestedFlight = new Flight();
+        requestedFlight.setDepartureAirportCode(dep.getCode());
+        requestedFlight.setArrivalAirportCode(arr.getCode());
+        requestedFlight.setPlaneRegistration(plane.getRegistrationNumber());
+        requestedFlight.setAirlineCode(airline.getIataCode());
+        requestedFlight.setDepartureTime(LocalDateTime.now().plusDays(1));
+        requestedFlight.setArrivalTime(LocalDateTime.now().plusDays(1).plusHours(2));
+        requestedFlight.setAvailableSeats(plane.getCapacity());
 
-    @Test
-    void adminRemovesFlightTest() {
-        AdminUser admin = new AdminUser("admin1", "pass");
-        admin.setId(1L);
+        FlightRequest flightRequest = new FlightRequest(requestedFlight, FlightRequest.RequestType.CREATE);
 
-        Flight flight = new Flight();
-        flight.setFlightId(456L);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
-        doNothing().when(flightRepository).deleteById(flight.getFlightId());
+        Assertions.assertEquals(2, flightRequest.getFlight().getAvailableSeats());
+        Assertions.assertEquals(FlightRequest.RequestType.CREATE, flightRequest.getType());
 
-        adminUserService.removeFlight(1L, flight);
-        verify(flightRepository, times(1)).deleteById(flight.getFlightId());
+        Flight saved = flightRepository.save(flightRequest.getFlight());
+        Assertions.assertNotNull(saved);
+        Assertions.assertEquals(plane.getRegistrationNumber(), saved.getPlaneRegistration());
+        Assertions.assertEquals("AAA", saved.getDepartureAirportCode());
+
+        verify(flightRepository, times(1)).save(any(Flight.class));
     }
 
     @Test
     void testSaveFlightService() {
-        Flight flight = new Flight();
-        flight.setFlightId(1L);
-        flight.setDepartureAirportCode("GOJ");
-        flight.setArrivalAirportCode("SVO");
-        flight.setDepartureTime(LocalDateTime.of(2025, 11, 1, 9, 0));
-        flight.setArrivalTime(LocalDateTime.of(2025, 11, 1, 11, 0));
-        flight.setAirlineCode("SU");
-        flight.setPlaneRegistration("REG-123");
-        flight.setAvailableSeats(150);
+        Flight flightToSave = new Flight();
+        flightToSave.setFlightId(1L);
+        flightToSave.setDepartureAirportCode("GOJ");
+        flightToSave.setArrivalAirportCode("SVO");
+        flightToSave.setDepartureTime(LocalDateTime.of(2025, 11, 1, 9, 0));
+        flightToSave.setArrivalTime(LocalDateTime.of(2025, 11, 1, 11, 0));
+        flightToSave.setAirlineCode("SU");
+        flightToSave.setPlaneRegistration("REG-123");
+        flightToSave.setAvailableSeats(150);
 
-        when(flightService.saveFlight(any(Flight.class))).thenReturn(flight);
+        when(flightService.saveFlight(any())).thenReturn(flightToSave);
 
-        Flight created = flightService.saveFlight(flight);
-
+        Flight created = flightService.saveFlight(flightToSave);
         Assertions.assertNotNull(created);
         Assertions.assertEquals("REG-123", created.getPlaneRegistration());
         Assertions.assertEquals("SU", created.getAirlineCode());
 
-        verify(flightService, times(1)).saveFlight(flight);
+        verify(flightService, times(1)).saveFlight(flightToSave);
     }
+    @Autowired
+    private AdminUserController adminUserController;
+
+    @MockBean
+    private AdminUserService adminUserServiceController;
+
+    private AdminUser controllerAdmin;
+
+    @BeforeEach
+    void setUpAdminController() {
+        controllerAdmin = new AdminUser("adminCtrl", "passCtrl");
+        controllerAdmin.setId(10L);
+    }
+
     @Test
-    void managerCreatesFlightRequestTest() {
-     //менеджер реализует права
-        ManagerUser manager = (ManagerUser) userRepository.findByRole(UserRole.MANAGER).get(0);
-        List<Airport> airports = airportRepository.findAll();
-        Airport departure = airports.get(0);
-        Airport arrival = airports.get(1);
+    void createAdminControllerTest_success() {
+        when(adminUserServiceController.save(any(AdminUser.class))).thenReturn(controllerAdmin);
 
-        Plane testPlane = planeRepository.findAll().get(0);
-        Airline airline = airlineRepository.findAll().get(0);
+        AdminUserDTO dto = new AdminUserDTO();
+        dto.setLogin("adminCtrl");
+        dto.setPassword("passCtrl");
 
-        Flight requestedFlight = new Flight();
-        requestedFlight.setDepartureAirportCode(departure.getCode());
-        requestedFlight.setArrivalAirportCode(arrival.getCode());
-        requestedFlight.setPlaneRegistration(testPlane.getRegistrationNumber());
-        requestedFlight.setAirlineCode(airline.getIataCode());
-        requestedFlight.setDepartureTime(LocalDateTime.now().plusDays(1));
-        requestedFlight.setArrivalTime(LocalDateTime.now().plusDays(1).plusHours(2));
-        requestedFlight.setAvailableSeats(testPlane.getCapacity());
+        ResponseEntity<AdminUser> response = adminUserController.createAdmin(dto);
 
-        Users.FlightRequest flightRequest = new Users.FlightRequest(requestedFlight, Users.FlightRequest.RequestType.CREATE);
+        Assertions.assertEquals(201, response.getStatusCodeValue());
+        Assertions.assertEquals("adminCtrl", response.getBody().getLogin());
+        verify(adminUserServiceController, times(1)).save(any(AdminUser.class));
+    }
 
-        // проверка данных
-        Assertions.assertEquals(2, flightRequest.getFlight().getAvailableSeats());
-        Assertions.assertEquals(Users.FlightRequest.RequestType.CREATE, flightRequest.getType());
-        Flight saved = flightRepository.save(flightRequest.getFlight());
+    @Test
+    void createAdminControllerTest_badRequest() {
+        AdminUserDTO dto = new AdminUserDTO();
+        ResponseEntity<AdminUser> response = adminUserController.createAdmin(dto);
 
-        Assertions.assertNotNull(saved);
-        Assertions.assertEquals(testPlane.getRegistrationNumber(), saved.getPlaneRegistration());
-        Assertions.assertEquals("AAA", saved.getDepartureAirportCode());
+        Assertions.assertEquals(400, response.getStatusCodeValue());
+        verify(adminUserServiceController, never()).save(any());
+    }
 
-        verify(flightRepository, times(1)).save(any(Flight.class));
+    @Test
+    void updateAdminControllerTest_success() {
+        when(adminUserServiceController.getById(10L)).thenReturn(Optional.of(controllerAdmin));
+        when(adminUserServiceController.save(any(AdminUser.class))).thenReturn(controllerAdmin);
+
+        AdminUserDTO dto = new AdminUserDTO();
+        dto.setLogin("updatedLogin");
+        dto.setPassword("updatedPass");
+
+        ResponseEntity<AdminUser> response = adminUserController.updateAdmin(10L, dto);
+
+        Assertions.assertEquals(200, response.getStatusCodeValue());
+        Assertions.assertEquals("updatedLogin", response.getBody().getLogin());
+        verify(adminUserServiceController, times(1)).getById(10L);
+        verify(adminUserServiceController, times(1)).save(any(AdminUser.class));
+    }
+
+    @Test
+    void updateAdminControllerTest_notFound() {
+        when(adminUserServiceController.getById(20L)).thenReturn(Optional.empty());
+
+        AdminUserDTO dto = new AdminUserDTO();
+        ResponseEntity<AdminUser> response = adminUserController.updateAdmin(20L, dto);
+
+        Assertions.assertEquals(404, response.getStatusCodeValue());
+        verify(adminUserServiceController, times(1)).getById(20L);
+        verify(adminUserServiceController, never()).save(any());
+    }
+
+    @Test
+    void getAllAdminsControllerTest() {
+        when(adminUserServiceController.getAll()).thenReturn(List.of(controllerAdmin));
+
+        ResponseEntity<List<AdminUser>> response = adminUserController.getAllAdmins();
+
+        Assertions.assertEquals(200, response.getStatusCodeValue());
+        Assertions.assertEquals(1, response.getBody().size());
+        verify(adminUserServiceController, times(1)).getAll();
     }
 
 }

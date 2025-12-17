@@ -11,10 +11,19 @@ import org.example.FlightRepository;
 @Setter
 @NoArgsConstructor
 public class AdminUser extends User {
-//функционал тот же (создать/удалить рейс, подтвердить/Отклонить запрос рейса)
+
     public AdminUser(String login, String password) {
         super(login, password, UserRole.ADMIN);
     }
+
+    @Column(nullable = true)
+    private String firstName;
+
+    @Column(nullable = true)
+    private String lastName;
+
+    @Column(nullable = true)
+    private Integer passportNumber;
 
     public void addFlight(FlightRepository repo, Flight flight) {
         if (flight != null) repo.save(flight);
